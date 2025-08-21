@@ -3,45 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
-import Link from 'next/link';
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-
-type Project = { id: string; title: string; status: string; client_id: string | null; notes?: string | null };
-type PDate = { id: string; starts_at: string; ends_at: string; location: string | null };
-
-export default function ProjectDetail() {
-  const params = useParams<{ id: string }>();
-  const id = useMemo(() => (Array.isArray(params.id) ? params.id[0] : params.id), [params.id]);
-
-  const [project, setProject] = useState<Project | null>(null);
-  const [dates, setDates] = useState<PDate[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const [title, setTitle] = useState('');
-  const [status, setStatus] = useState('PROSPECT');
-
-  const [newDate, setNewDate] = useState({ starts_at: '', ends_at: '', location: '' });
-  const [adding, setAdding] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!id) return;
-    (async () => {
-      setLoading(true);
-      const { data: proj, error: projErr } = await supabase.from('projects').select('*').eq('id', id).single();
-      if (projErr) setError(projErr.message);
-      if (proj) {
-        setProject(proj);
-        setTitle(proj.title);
-        setStatus(proj.status || 'PROSPECT');
-      }
-'use client';
-
-import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
-import { createClient } from '@supabase/supabase-js';
 import Sidebar from '../../../components/Sidebar';
 
 const supabase = createClient(
@@ -248,4 +209,5 @@ export default function ProjectDetail() {
     </main>
   );
 }
+
 
