@@ -37,7 +37,50 @@ export default function ProjectDetail() {
         setTitle(proj.title);
         setStatus(proj.status || 'PROSPECT');
       }
-      const { data: pds, error: datesErr } = await supabase.from('project_dates').select('*').eq('project_id', id).order('starts_at');
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'next/navigation';
+import { createClient } from '@supabase/supabase-js';
+import Sidebar from '@/components/Sidebar';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+type Project = { id: string; title: string; status: string; client_id: string | null; notes?: string | null };
+type PDate = { id: string; starts_at: string; ends_at: string; location: string | null };
+
+export default function ProjectDetail() {
+  const params = useParams<{ id: string }>();
+  const id = useMemo(() => (Array.isArray(params.id) ? params.id[0] : params.id), [params.id]);
+
+  const [project, setProject] = useState<Project | null>(null);
+  const [dates, setDates] = useState<PDate[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [title, setTitle] = useState('');
+  const [status, setStatus] = useState('PROSPECT');
+
+  const [newDate, setNewDate] = useState({ starts_at: '', ends_at: '', location: '' });
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    (async () => {
+      setLoading(true);
+      const { data: proj, error: projErr } = await supabase.from('projects').select('*').eq('id', id).single();
+      if (projErr) setError(projErr.message);
+      if (proj) {
+        setProject(proj);
+        setTitle(proj.title);
+        setStatus(proj.status || 'PROSPECT');
+      }
+      const { data: pds, error: datesErr } = await supabase
+        .from('project_dates').select('*').eq('project_id', id).order('starts_at');
       if (datesErr) setError(datesErr.message);
       setDates(pds || []);
       setLoading(false);
@@ -47,7 +90,12 @@ export default function ProjectDetail() {
   async function saveProject() {
     if (!project) return;
     setError(null); setMessage(null);
-    const { data, error } = await supabase.from('projects').update({ title, status }).eq('id', project.id).select('*').single();
+    const { data, error } = await supabase
+      .from('projects')
+      .update({ title, status })
+      .eq('id', project.id)
+      .select('*')
+      .single();
     if (error) setError(error.message);
     if (data) { setProject(data); setMessage('Saved'); }
   }
@@ -82,12 +130,16 @@ export default function ProjectDetail() {
 
     try {
       setAdding(true);
-      const { data, error } = await supabase.from('project_dates').insert([{
-        project_id: project.id,
-        starts_at: startISO,
-        ends_at: endISO,
-        location: newDate.location || null
-      }]).select('*').single();
+      const { data, error } = await supabase
+        .from('project_dates')
+        .insert([{
+          project_id: project.id,
+          starts_at: startISO,
+          ends_at: endISO,
+          location: newDate.location || null
+        }])
+        .select('*')
+        .single();
       if (error) { setError(error.message); return; }
       if (data) {
         setDates([...dates, data]);
@@ -95,7 +147,7 @@ export default function ProjectDetail() {
         setMessage('Date added');
       }
     } finally {
-      setAdding(false); // <-- fixed (lowercase false) and moved to finally
+      setAdding(false);
     }
   }
 
@@ -107,21 +159,25 @@ export default function ProjectDetail() {
     setMessage('Date deleted');
   }
 
-  if (loading) return <main className="p-6">Loading…</main>;
-  if (!project) return <main className="p-6">Project not found.</main>;
+  if (loading) return (
+    <main className="min-h-screen grid grid-cols-[260px_1fr]">
+      <Sidebar />
+      <section className="p-6">Loading…</section>
+    </main>
+  );
+
+  if (!project) return (
+    <main className="min-h-screen grid grid-cols-[260px_1fr]">
+      <Sidebar />
+      <section className="p-6">Project not found.</section>
+    </main>
+  );
 
   const canAdd = Boolean(newDate.starts_at && newDate.ends_at);
 
   return (
     <main className="min-h-screen grid grid-cols-[260px_1fr]">
-      <aside className="bg-white/5 border-r border-white/10 p-4">
-        <div className="text-xl font-semibold mb-4">Project Lens</div>
-        <nav className="space-y-2">
-          <Link href="/dashboard" className="block px-3 py-2 rounded hover:bg-white/10">Dashboard</Link>
-          <Link href="/clients" className="block px-3 py-2 rounded hover:bg-white/10">Clients</Link>
-          <Link href="/ics" className="block px-3 py-2 rounded hover:bg-white/10">ICS Feed</Link>
-        </nav>
-      </aside>
+      <Sidebar />
 
       <section className="p-6 space-y-8">
         <div className="flex items-center justify-between">
@@ -192,3 +248,4 @@ export default function ProjectDetail() {
     </main>
   );
 }
+

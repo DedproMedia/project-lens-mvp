@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import Sidebar from '@/components/Sidebar';
 
 type PDate = { id: string; project_id: string; starts_at: string; ends_at: string; location: string | null };
 type Proj = { id: string; title: string; status: string | null; client_id: string | null };
@@ -18,7 +19,6 @@ export default function CalendarSettingsPage() {
   const [events, setEvents] = useState<Array<{title: string; status: string; client?: string|null; starts_at: string; ends_at: string; location?: string|null}>>([]);
   const [loading, setLoading] = useState(true);
 
-  // Base URL (prefer server-provided env var in prod; fall back to window.origin in dev)
   const origin = useMemo(() => {
     if (typeof window !== 'undefined') return window.location.origin;
     return process.env.APP_BASE_URL || 'http://localhost:3000';
@@ -30,7 +30,6 @@ export default function CalendarSettingsPage() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      // Get next 5 upcoming events (joins done in 2 queries to keep it simple)
       const nowISO = new Date().toISOString();
       const { data: pds, error } = await supabase
         .from('project_dates')
@@ -85,7 +84,6 @@ export default function CalendarSettingsPage() {
   }
 
   function openInCalendar() {
-    // Apple/Outlook will try to subscribe via webcal://
     window.location.href = webcalUrl;
   }
 
@@ -93,14 +91,7 @@ export default function CalendarSettingsPage() {
 
   return (
     <main className="min-h-screen grid grid-cols-[260px_1fr]">
-      {/* Left rail placeholder (kept minimal to avoid breaking your layout) */}
-      <aside className="bg-white/5 border-r border-white/10 p-4">
-        <div className="text-xl font-semibold mb-4">Settings</div>
-        <nav className="space-y-2">
-          <a className="block px-3 py-2 rounded hover:bg-white/10" href="/settings/calendar">Calendar Integration</a>
-          {/* Add more settings here later */}
-        </nav>
-      </aside>
+      <Sidebar />
 
       <section className="p-6 space-y-8">
         <header>
@@ -108,7 +99,6 @@ export default function CalendarSettingsPage() {
           <p className="text-white/70 mt-1">Subscribe to your Project Lens calendar feed in Apple Calendar, Google Calendar, or Outlook.</p>
         </header>
 
-        {/* ICS URL + actions */}
         <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-3">
           <label className="block text-sm text-white/70">Your ICS feed</label>
           <div className="flex flex-col md:flex-row gap-2">
@@ -139,7 +129,6 @@ export default function CalendarSettingsPage() {
           </div>
         </div>
 
-        {/* How to subscribe */}
         <div className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-2">
           <h2 className="text-lg font-semibold">How to subscribe</h2>
           <ul className="list-disc list-inside text-white/80 space-y-1">
@@ -149,7 +138,6 @@ export default function CalendarSettingsPage() {
           </ul>
         </div>
 
-        {/* Upcoming preview */}
         <div className="bg-white/5 border border-white/10 rounded-lg p-4">
           <h2 className="text-lg font-semibold mb-2">Upcoming events (preview)</h2>
           {loading ? (
@@ -176,3 +164,4 @@ export default function CalendarSettingsPage() {
     </main>
   );
 }
+
