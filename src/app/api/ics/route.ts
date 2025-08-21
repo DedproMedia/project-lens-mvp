@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-/** Escape text per RFC 5545: backslash, comma, semicolon, newline */
+/** Escape per RFC 5545 */
 function esc(v: string) {
   return v
     .replace(/\\/g, '\\\\')
@@ -10,7 +10,7 @@ function esc(v: string) {
     .replace(/\r?\n/g, '\\n');
 }
 
-/** Format to UTC basic format YYYYMMDDTHHMMSSZ */
+/** UTC -> YYYYMMDDTHHMMSSZ */
 function fmt(dt: string | Date) {
   const d = typeof dt === 'string' ? new Date(dt) : dt;
   const yyyy = d.getUTCFullYear();
@@ -22,13 +22,11 @@ function fmt(dt: string | Date) {
   return `${yyyy}${mm}${dd}T${HH}${MM}${SS}Z`;
 }
 
-/** Map our project.status to VCALENDAR STATUS */
 function mapStatus(s?: string) {
-  // VCALENDAR uses CONFIRMED | TENTATIVE | CANCELLED
   if (!s) return 'TENTATIVE';
   const S = s.toUpperCase();
   if (S === 'CANCELLED') return 'CANCELLED';
-  if (S === 'CONFIRMED' || S === 'PAID' || S === 'DELIVERED' || S === 'INVOICED') return 'CONFIRMED';
+  if (['CONFIRMED','PAID','DELIVERED','INVOICED'].includes(S)) return 'CONFIRMED';
   return 'TENTATIVE'; // PROSPECT, IN_EDIT, etc.
 }
 
@@ -39,37 +37,32 @@ export async function GET(req: NextRequest) {
   );
 
   const { searchParams } = new URL(req.url);
-
-  // Controls
   const calname = searchParams.get('calname') || 'Project Lens — Projects';
   const includePast = searchParams.get('past') === 'include';
   const sinceDays = Number(searchParams.get('sinceDays') ?? '1');
-  const alarmMinutes = Number(searchParams.get('alarm') ?? '0'); // 0 = no alarm
+  const alarmMinutes = Number(searchParams.get('alarm') ?? '0');
   const sinceISO = new Date(Date.now() - sinceDays * 24 * 3600 * 1000).toISOString();
 
-  // 1) Pull project dates (future by default)
-  const q = supabase
+  // 1) Dates
+  const base = supabase
     .from('project_dates')
     .select('id, project_id, starts_at, ends_at, location')
     .order('starts_at', { ascending: true })
     .limit(500);
 
   const { data: dates, error: dErr } = includePast
-    ? await q.gte('ends_at', sinceISO)
-    : await q.gte('starts_at', new Date().toISOString());
+    ? await base.gte('ends_at', sinceISO)
+    : await base.gte('starts_at', new Date().toISOString());
 
   if (dErr) {
     const errIcs = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//Project Lens//ICS//EN',
-      `X-ERROR:${esc(dErr.message)}`,
-      'END:VCALENDAR'
+      'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Project Lens//ICS//EN',
+      `X-ERROR:${esc(dErr.message)}`,'END:VCALENDAR'
     ].join('\r\n');
     return new NextResponse(errIcs, { headers: { 'Content-Type': 'text/calendar; charset=utf-8' } });
   }
 
-  // 2) Load projects (title, status, client_id)
+  // 2) Projects
   const pIds = Array.from(new Set((dates ?? []).map(d => d.project_id))).filter(Boolean) as string[];
   let projectsById: Record<string, { id: string; title: string; status: string | null; client_id: string | null }> = {};
   if (pIds.length) {
@@ -80,7 +73,7 @@ export async function GET(req: NextRequest) {
     (projs || []).forEach(p => (projectsById[p.id] = p));
   }
 
-  // 3) Load clients for names
+  // 3) Clients
   const cIds = Array.from(new Set(Object.values(projectsById).map(p => p.client_id).filter(Boolean))) as string[];
   let clientsById: Record<string, { id: string; name: string | null }> = {};
   if (cIds.length) {
@@ -92,6 +85,7 @@ export async function GET(req: NextRequest) {
   }
 
   // 4) Build ICS
+  const origin = process.env.APP_BASE_URL || '';
   const lines: string[] = [];
   lines.push('BEGIN:VCALENDAR');
   lines.push('VERSION:2.0');
@@ -103,20 +97,27 @@ export async function GET(req: NextRequest) {
   (dates || []).forEach((row, idx) => {
     const proj = projectsById[row.project_id];
     const title = proj?.title || 'Project';
-    const status = proj?.status || 'PROSPECT';
-    const clientName = proj?.client_id ? clientsById[proj.client_id!]?.name : undefined;
+    const status = (proj?.status || 'PROSPECT').replace(/_/g, ' ');
+    const clientName = proj?.client_id ? clientsById[proj.client_id!]?.name || '' : '';
 
-    // Summary: "Project Title — Status"
-    const summary = `${title} — ${status.replace(/_/g, ' ')}`;
+    // #### SUMMARY with client name ####
+    // Format: Project Title — STATUS — Client
+    const summaryParts = [title, status.toUpperCase()];
+    if (clientName) summaryParts.push(clientName);
+    const summary = summaryParts.join(' — ');
 
-    // Description with more context
-    const origin = process.env.APP_BASE_URL || '';
-    const projectUrl = origin ? `${origin}/projects/${row.project_id}` : '';
-    const descLines = [
-      clientName ? `Client: ${clientName}` : undefined,
-      row.location ? `Location: ${row.location}` : undefined,
-      projectUrl ? `Open: ${projectUrl}` : undefined
-    ].filter(Boolean) as string[];
+    // #### DESCRIPTION with spacing ####
+    // We create "paragraphs" separated by a blank line.
+    const descSections: string[] = [];
+    const infoBlock: string[] = [];
+    if (clientName) infoBlock.push(`Client: ${clientName}`);
+    if (row.location) infoBlock.push(`Location: ${row.location}`);
+    if (infoBlock.length) descSections.push(infoBlock.join('\\n')); // block 1
+
+    const link = origin ? `${origin}/projects/${row.project_id}` : '';
+    if (link) descSections.push(`Open: ${link}`); // block 2
+
+    const description = descSections.join('\\n\\n'); // <-- blank line between blocks
 
     lines.push('BEGIN:VEVENT');
     lines.push(`UID:${row.id || idx}@project-lens`);
@@ -125,11 +126,10 @@ export async function GET(req: NextRequest) {
     if (row.ends_at)   lines.push(`DTEND:${fmt(row.ends_at)}`);
     lines.push(`SUMMARY:${esc(summary)}`);
     if (row.location)  lines.push(`LOCATION:${esc(row.location)}`);
-    if (descLines.length) lines.push(`DESCRIPTION:${esc(descLines.join('\\n'))}`);
-    lines.push(`STATUS:${mapStatus(status)}`);
-    if (projectUrl) lines.push(`URL:${esc(projectUrl)}`);
+    if (description)   lines.push(`DESCRIPTION:${esc(description)}`);
+    lines.push(`STATUS:${mapStatus(proj?.status || undefined)}`);
+    if (link)          lines.push(`URL:${esc(link)}`);
 
-    // Optional alarm
     if (alarmMinutes > 0) {
       lines.push('BEGIN:VALARM');
       lines.push(`TRIGGER:-PT${Math.round(alarmMinutes)}M`);
@@ -150,3 +150,4 @@ export async function GET(req: NextRequest) {
     }
   });
 }
+
