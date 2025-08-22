@@ -1,18 +1,14 @@
 "use client";
-
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
 export default function AddProjectButton() {
   const router = useRouter();
-
   const go = (e: React.MouseEvent<HTMLButtonElement>) => {
-    // Belt & braces: if this ever sits inside a <form>, don't submit it.
     e.preventDefault();
     e.stopPropagation();
     router.push("/projects/new");
   };
-
   return (
     <button
       type="button"
@@ -23,8 +19,3 @@ export default function AddProjectButton() {
     </button>
   );
 }
-
-
-
-
-

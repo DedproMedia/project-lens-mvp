@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import Sidebar from '../../../components/Sidebar';
 
 type PDate = { id: string; project_id: string; starts_at: string; ends_at: string; location: string | null };
 type Proj = { id: string; title: string; status: string | null; client_id: string | null };

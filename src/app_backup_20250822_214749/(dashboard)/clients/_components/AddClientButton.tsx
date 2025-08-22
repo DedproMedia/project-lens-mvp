@@ -1,14 +1,17 @@
 "use client";
+
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
 export default function AddClientButton() {
   const router = useRouter();
+
   const go = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
     router.push("/clients/new");
   };
+
   return (
     <button
       type="button"
@@ -19,3 +22,9 @@ export default function AddClientButton() {
     </button>
   );
 }
+
+
+
+
+
+
