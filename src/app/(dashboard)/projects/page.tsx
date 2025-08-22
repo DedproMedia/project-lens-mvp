@@ -1,4 +1,5 @@
 import AddProjectButton from "./_components/AddProjectButton";
+import ProjectsList from "./_components/ProjectsList";
 
 export default async function ProjectsPage() {
   return (
@@ -7,11 +8,11 @@ export default async function ProjectsPage() {
         <h1 style={{ margin: 0 }}>Projects</h1>
         <AddProjectButton />
       </div>
+
       <div style={{ marginTop: 16, border: "1px solid #eee", borderRadius: 10, padding: 16 }}>
-        <p style={{ margin: 0, color: "#666" }}>
-          Your projects will appear here. Click <em>New Project</em> to create one.
-        </p>
+        <ProjectsList />
       </div>
     </div>
   );
 }
+
