@@ -7,7 +7,7 @@ export default function AddProjectButton() {
   const router = useRouter();
 
   const go = (e: React.MouseEvent<HTMLButtonElement>) => {
-    // Protect against being inside a <form>
+    // Belt & braces: if this ever sits inside a <form>, don't submit it.
     e.preventDefault();
     e.stopPropagation();
     router.push("/projects/new");
@@ -23,6 +23,7 @@ export default function AddProjectButton() {
     </button>
   );
 }
+
 
 
 

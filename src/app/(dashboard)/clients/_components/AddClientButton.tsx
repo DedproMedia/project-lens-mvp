@@ -7,7 +7,6 @@ export default function AddClientButton() {
   const router = useRouter();
 
   const go = (e: React.MouseEvent<HTMLButtonElement>) => {
-    // Protect against being inside a <form>
     e.preventDefault();
     e.stopPropagation();
     router.push("/clients/new");
@@ -23,6 +22,7 @@ export default function AddClientButton() {
     </button>
   );
 }
+
 
 
 
