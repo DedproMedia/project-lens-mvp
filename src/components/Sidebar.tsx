@@ -11,9 +11,7 @@ export default function Sidebar() {
         <Link href="/clients" className="block px-3 py-2 rounded hover:bg-white/10">
           Clients
         </Link>
-        <Link href="/ics" className="block px-3 py-2 rounded hover:bg-white/10">
-          ICS Feed
-        </Link>
+        {/* Removed: <Link href="/ics">ICS Feed</Link> */}
         <Link href="/settings/calendar" className="block px-3 py-2 rounded hover:bg-white/10">
           Calendar Integration
         </Link>
