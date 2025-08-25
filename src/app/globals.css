@@ -5,36 +5,39 @@
 /* Base theme */
 html, body {
   height: 100%;
-  background: #0a0a0a;
-  color: white;
+  background: #ffffff; /* white background */
+  color: #111111;      /* black text everywhere */
 }
 
-/* ---- Project Lens: readable form controls ---- */
-.pl-form input,
-.pl-form textarea,
-.pl-form select {
-  color: #111;               /* text you type */
-  background: #fff;          /* field background */
-  border: 1px solid #e5e7eb; /* light gray border */
+/* ---- Project Lens: clean light theme for all forms ---- */
+
+/* Inputs, textareas, selects, and buttons (applied globally) */
+input,
+textarea,
+select,
+button {
+  color: #111111;           /* black text */
+  background: #f9f9f9;      /* slightly off-white background */
+  border: 1px solid #000000;/* black border */
   border-radius: 6px;
-  caret-color: #111;
+  caret-color: #111111;
   outline: none;
+  padding: 8px;
 }
 
-.pl-form input::placeholder,
-.pl-form textarea::placeholder {
-  color: #9ca3af; /* muted placeholder */
+/* Placeholder styling */
+input::placeholder,
+textarea::placeholder {
+  color: #666666; /* muted gray placeholder */
 }
 
-.pl-form button {
-  color: #111;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
+/* Labels and headings stay black */
+label,
+h1,
+h2,
+h3 {
+  color: #111111;
 }
 
-/* Ensure text inside form blocks is readable */
-.pl-form {
-  color: #111;
-}
+
 
