@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "../../../../lib/supabase-browser";
 
-export default function AuthCallbackPage() {
+function CallbackInner() {
   const router = useRouter();
   const params = useSearchParams();
 
@@ -12,7 +12,7 @@ export default function AuthCallbackPage() {
     const run = async () => {
       const supabase = supabaseBrowser();
 
-      // 1) If using PKCE (OAuth returns ?code=...), exchange it for a session
+      // Handle OAuth (PKCE) ?code=... → exchange for a session
       const code = params.get("code");
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -23,20 +23,28 @@ export default function AuthCallbackPage() {
         }
       }
 
-      // 2) For magic links (hash tokens), supabase-js handles it automatically.
-      // Still, wait for the session to exist.
+      // Give supabase-js a tick to hydrate session (covers magic-link too)
       const { data } = await supabase.auth.getSession();
       if (!data.session) {
-        // small wait for auth state to settle
         await new Promise((r) => setTimeout(r, 600));
       }
 
-      // 3) Go to next (if provided) or projects
+      // Redirect to next or projects
       const next = params.get("next") || "/projects";
       router.replace(next);
     };
     run();
-  }, [params, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return <p style={{ padding: 16 }}>Signing you in…</p>;
 }
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={<p style={{ padding: 16 }}>Signing you in…</p>}>
+      <CallbackInner />
+    </Suspense>
+  );
+}
+
