@@ -9,6 +9,10 @@ export default function AuthPage() {
   const [err, setErr] = useState<string | null>(null);
   const [working, setWorking] = useState<"google" | "email" | null>(null);
   const [oauthUrl, setOauthUrl] = useState<string | null>(null);
+  const [debug, setDebug] = useState<any>(null);
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
   // Build redirect once on the client
   const redirectTo = useMemo(() => {
@@ -16,16 +20,27 @@ export default function AuthPage() {
     return window.location.origin + "/auth/callback";
   }, []);
 
-  // Preflight: surface missing env vars (common silent failure)
+  // Direct (SDK-free) OAuth URL as a last-resort fallback
+  const directOAuthUrl = useMemo(() => {
+    if (!supabaseUrl) return null;
+    const u = new URL(supabaseUrl.replace(/\/$/, "") + "/auth/v1/authorize");
+    u.searchParams.set("provider", "google");
+    u.searchParams.set("redirect_to", redirectTo);
+    return u.toString();
+  }, [supabaseUrl, redirectTo]);
+
   useEffect(() => {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !key) {
-      setErr(
-        "Missing Supabase env vars in Vercel: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY."
-      );
+    const report: Record<string, any> = {
+      NEXT_PUBLIC_SUPABASE_URL_present: Boolean(supabaseUrl),
+      NEXT_PUBLIC_SUPABASE_ANON_KEY_present: Boolean(anonKey),
+      redirectTo,
+      directOAuthUrl,
+    };
+    setDebug(report);
+    if (!supabaseUrl || !anonKey) {
+      setErr("Missing Supabase env vars in Vercel: NEXT_PUBLIC_SUPABASE_URL and/or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
     }
-  }, []);
+  }, [supabaseUrl, anonKey, redirectTo, directOAuthUrl]);
 
   const signInWithGoogle = async () => {
     setErr(null);
@@ -37,15 +52,20 @@ export default function AuthPage() {
         provider: "google",
         options: { redirectTo },
       });
+
+      // capture for on-page debugging
+      setDebug((d: any) => ({ ...d, sdkReturn: { data, error } }));
+
       if (error) throw error;
 
-      // Force navigation in case auto-redirect is blocked
       if (data?.url) {
         setOauthUrl(data.url);
-        window.location.href = data.url;
+        // Force navigation (avoids popup blockers)
+        window.location.assign(data.url);
         return;
       }
-      setErr("No OAuth URL returned. Check Google provider config in Supabase.");
+
+      setErr("SDK returned no OAuth URL. Check Supabase → Auth → Providers → Google is enabled and has Client ID/Secret.");
     } catch (e: any) {
       console.error("Google OAuth error:", e);
       setErr(e?.message ?? "Google sign-in failed. Check provider config.");
@@ -75,7 +95,7 @@ export default function AuthPage() {
   };
 
   return (
-    <div style={{ padding: 16, maxWidth: 460 }}>
+    <div style={{ padding: 16, maxWidth: 520 }}>
       <h1 style={{ marginTop: 0 }}>Sign in</h1>
 
       <button
@@ -84,7 +104,7 @@ export default function AuthPage() {
         disabled={working !== null}
         style={{
           padding: 10, border: "1px solid #ddd", borderRadius: 6,
-          width: "100%", marginBottom: 12, opacity: working ? 0.7 : 1,
+          width: "100%", marginBottom: 8, opacity: working ? 0.7 : 1,
           cursor: working ? "not-allowed" : "pointer",
         }}
         aria-busy={working === "google"}
@@ -92,9 +112,18 @@ export default function AuthPage() {
         {working === "google" ? "Opening Google…" : "Continue with Google"}
       </button>
 
-      {oauthUrl && (
-        <p style={{ fontSize: 12, marginTop: 8 }}>
-          If nothing happened, <a href={oauthUrl}>click here to continue</a>.
+      {/* Absolute fallback: raw OAuth URL */}
+      {directOAuthUrl && (
+        <p style={{ fontSize: 12, marginTop: 4 }}>
+          If nothing happened, use the fallback:{" "}
+          <a href={directOAuthUrl}>Continue with Google (direct)</a>
+        </p>
+      )}
+
+      {/* SDK returned URL (if any) */}
+      {oauthUrl && !directOAuthUrl && (
+        <p style={{ fontSize: 12, marginTop: 4 }}>
+          Or click here: <a href={oauthUrl}>Continue (SDK URL)</a>
         </p>
       )}
 
@@ -127,10 +156,17 @@ export default function AuthPage() {
 
       {err && <p style={{ color: "crimson", marginTop: 12 }}>{err}</p>}
 
+      {/* Debug block to make config issues obvious */}
+      <details style={{ marginTop: 12 }}>
+        <summary>Debug info</summary>
+        <pre style={{ fontSize: 12, whiteSpace: "pre-wrap" }}>
+{JSON.stringify(debug, null, 2)}
+        </pre>
+      </details>
+
       <p style={{ fontSize: 12, color: "#666", marginTop: 12 }}>
         Redirect target: <code>{redirectTo}</code>
       </p>
     </div>
   );
 }
-
