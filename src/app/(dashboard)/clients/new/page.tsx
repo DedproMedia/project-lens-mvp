@@ -27,7 +27,6 @@ export default function NewClientPage() {
     setErr(null);
     setSaving(true);
 
-    // Insert only columns you actually have; extra ones are ignored by PostgREST if missing? No—so we pick safe set:
     const payload: Record<string, any> = { name: form.name };
     if (form.email) payload.email = form.email;
     if (form.phone) payload.phone = form.phone;
@@ -42,11 +41,11 @@ export default function NewClientPage() {
       return;
     }
 
-    router.push(`/clients`); // back to list
+    router.push(`/clients`);
   };
 
   return (
-    <div style={{ padding: 16, maxWidth: 560 }}>
+    <div className="pl-form" style={{ padding: 16, maxWidth: 560 }}>
       <h1 style={{ marginTop: 0 }}>New Client</h1>
 
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
@@ -82,7 +81,7 @@ export default function NewClientPage() {
 
         <div style={{ display: "flex", gap: 8 }}>
           <button type="submit" disabled={saving}
-                  style={{ padding: "10px 14px", border: "1px solid #ddd", borderRadius: 6 }}>
+                  style={{ padding: "10px 14px" }}>
             {saving ? "Saving…" : "Save client"}
           </button>
         </div>

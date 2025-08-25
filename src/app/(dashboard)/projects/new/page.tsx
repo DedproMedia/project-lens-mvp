@@ -4,29 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-// The full list of elements from your brief
 const ALL_ELEMENTS = [
-  "project_title",
-  "client_name",
-  "deliverables",
-  "project_dates_locations",
-  "project_status",
-  "headline_description",
-  "client_budget",
-  "project_cost",
-  "style_direction",
-  "shotlist",
-  "delivery_links",
-  "expenses",
-  "terms_and_conditions",
-  "rams",
-  "insurance",
-  "additional_requests",
-  "notes",
+  "project_title","client_name","deliverables","project_dates_locations","project_status",
+  "headline_description","client_budget","project_cost","style_direction","shotlist",
+  "delivery_links","expenses","terms_and_conditions","rams","insurance","additional_requests","notes",
 ] as const;
 
 type ElementKey = (typeof ALL_ELEMENTS)[number];
-
 type Client = { id: string; name: string };
 
 export default function NewProjectPage() {
@@ -40,14 +24,13 @@ export default function NewProjectPage() {
   const [clientId, setClientId] = useState("");
   const [headline, setHeadline] = useState("");
 
-  // permissions state
-  const [active, setActive] = useState<Record<ElementKey, boolean>>(() =>
+  const [active, setActive] = useState<Record<ElementKey, boolean>>(
     Object.fromEntries(ALL_ELEMENTS.map((k) => [k, false])) as Record<ElementKey, boolean>
   );
-  const [visible, setVisible] = useState<Record<ElementKey, boolean>>(() =>
+  const [visible, setVisible] = useState<Record<ElementKey, boolean>>(
     Object.fromEntries(ALL_ELEMENTS.map((k) => [k, false])) as Record<ElementKey, boolean>
   );
-  const [editable, setEditable] = useState<Record<ElementKey, boolean>>(() =>
+  const [editable, setEditable] = useState<Record<ElementKey, boolean>>(
     Object.fromEntries(ALL_ELEMENTS.map((k) => [k, false])) as Record<ElementKey, boolean>
   );
 
@@ -70,7 +53,6 @@ export default function NewProjectPage() {
   }, [supabase]);
 
   const selectedElements = useMemo(() => ALL_ELEMENTS.filter((k) => active[k]), [active]);
-
   const toggle = (state: any, setState: any, key: ElementKey) =>
     setState((s: any) => ({ ...s, [key]: !s[key] }));
 
@@ -79,11 +61,7 @@ export default function NewProjectPage() {
     setErr(null);
     setSaving(true);
 
-    // 1) Insert the project (stick to safe columns you likely have)
-    // Derive a title: your table might use `name` or `title`. We'll try both.
     const insertPayload: Record<string, any> = {
-      // We'll attempt both; columns that don't exist are ignored by PostgREST? (No—they error)
-      // So we probe by trying "name" primarily; if that errors, we try "title".
       headline_description: headline || null,
       client_id: clientId || null,
       config: {
@@ -93,7 +71,6 @@ export default function NewProjectPage() {
       },
     };
 
-    // Try with `name`
     const attempt = async (field: "name" | "title") => {
       const payload = { ...insertPayload, [field]: title };
       return supabase.from("projects").insert(payload).select("id").single();
@@ -105,13 +82,9 @@ export default function NewProjectPage() {
     {
       const { data, error } = await attempt("name");
       if (error) {
-        // retry with "title"
         const r2 = await attempt("title");
-        if (r2.error) {
-          insertErr = r2.error.message;
-        } else {
-          projectId = String(r2.data.id);
-        }
+        if (r2.error) insertErr = r2.error.message;
+        else projectId = String(r2.data.id);
       } else {
         projectId = String(data.id);
       }
@@ -123,29 +96,20 @@ export default function NewProjectPage() {
       return;
     }
 
-    // 2) Generate a collaboration token + save it
     const token = cryptoRandom(24);
     const linkUrl = window.location.origin + `/share/${token}`;
-
     const { error: linkErr } = await supabase.from("project_collab_links").insert({
       project_id: projectId,
       token,
     });
-
-    if (linkErr) {
-      // Non-fatal: project is created; we can still proceed
-      console.warn("Failed to store collab token:", linkErr.message);
-    } else {
-      setCollabLink(linkUrl);
-    }
+    if (!linkErr) setCollabLink(linkUrl);
 
     setSaving(false);
-    router.push(`/projects`); // back to list (comment out if you want to stay)
-    // If you want to stay on the page and show the link, comment the push above and leave setCollabLink
+    router.push(`/projects`);
   };
 
   return (
-    <div style={{ padding: 16, maxWidth: 900 }}>
+    <div className="pl-form" style={{ padding: 16, maxWidth: 900 }}>
       <h1 style={{ marginTop: 0 }}>New Project</h1>
 
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 16 }}>
@@ -245,11 +209,7 @@ export default function NewProjectPage() {
         )}
 
         <div style={{ display: "flex", gap: 8 }}>
-          <button
-            type="submit"
-            disabled={saving}
-            style={{ padding: "10px 14px", border: "1px solid #ddd", borderRadius: 6 }}
-          >
+          <button type="submit" disabled={saving} style={{ padding: "10px 14px" }}>
             {saving ? "Creating…" : "Create project"}
           </button>
         </div>
@@ -265,7 +225,6 @@ export default function NewProjectPage() {
   );
 }
 
-// Helpers
 function labelFor(key: ElementKey) {
   switch (key) {
     case "project_title": return "Project Title";
