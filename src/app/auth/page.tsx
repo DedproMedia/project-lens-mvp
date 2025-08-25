@@ -16,15 +16,11 @@ export default function AuthPage() {
     return window.location.origin + "/auth/callback";
   }, []);
 
-  // Preflight: surface missing env vars
+  // Preflight: surface missing env vars (common silent failure)
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !key) {
-      setErr(
-        "Missing Supabase env vars. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel (and locally)."
-      );
-    }
+    if (!url || !key) setErr("Missing Supabase env vars in Vercel: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
   }, []);
 
   const signInWithGoogle = async () => {
@@ -39,13 +35,12 @@ export default function AuthPage() {
       });
       if (error) throw error;
 
-      // Manually force navigation if auto-redirect doesn't happen
+      // Force navigation in case auto-redirect is blocked
       if (data?.url) {
         setOauthUrl(data.url);
         window.location.href = data.url;
         return;
       }
-
       setErr("No OAuth URL returned. Check Google provider config in Supabase.");
     } catch (e: any) {
       console.error("Google OAuth error:", e);
@@ -69,7 +64,7 @@ export default function AuthPage() {
       setSent(true);
     } catch (e: any) {
       console.error("Magic link error:", e);
-      setErr(e?.message ?? "Magic link failed. Check Supabase email settings.");
+      setErr(e?.message ?? "Magic link failed. Check Supabase email settings & redirect allowlist.");
     } finally {
       setWorking(null);
     }
@@ -84,12 +79,8 @@ export default function AuthPage() {
         onClick={signInWithGoogle}
         disabled={working !== null}
         style={{
-          padding: 10,
-          border: "1px solid #ddd",
-          borderRadius: 6,
-          width: "100%",
-          marginBottom: 12,
-          opacity: working ? 0.7 : 1,
+          padding: 10, border: "1px solid #ddd", borderRadius: 6,
+          width: "100%", marginBottom: 12, opacity: working ? 0.7 : 1,
           cursor: working ? "not-allowed" : "pointer",
         }}
         aria-busy={working === "google"}
@@ -106,7 +97,7 @@ export default function AuthPage() {
       <hr />
 
       {sent ? (
-        <p>Check your email for a magic link. (Look in junk/spam.)</p>
+        <p>Check your email for a magic link (look in junk/spam). After clicking it you’ll be signed in.</p>
       ) : (
         <form onSubmit={sendMagicLink} style={{ display: "grid", gap: 8, marginTop: 12 }}>
           <label>
@@ -138,3 +129,4 @@ export default function AuthPage() {
     </div>
   );
 }
+
