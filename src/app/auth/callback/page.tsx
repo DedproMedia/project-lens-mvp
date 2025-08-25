@@ -12,7 +12,6 @@ function CallbackInner() {
     const run = async () => {
       const supabase = supabaseBrowser();
 
-      // Handle OAuth (PKCE) ?code=... → exchange for a session
       const code = params.get("code");
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -23,13 +22,11 @@ function CallbackInner() {
         }
       }
 
-      // Give supabase-js a tick to hydrate session (covers magic-link too)
       const { data } = await supabase.auth.getSession();
       if (!data.session) {
         await new Promise((r) => setTimeout(r, 600));
       }
 
-      // Redirect to next or projects
       const next = params.get("next") || "/projects";
       router.replace(next);
     };
