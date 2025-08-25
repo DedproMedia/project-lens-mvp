@@ -9,12 +9,17 @@ export default function AuthPage() {
   const [sent, setSent] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const redirectTo = typeof window !== "undefined"
+    ? window.location.origin + "/auth/callback"
+    : "/auth/callback";
+
   const signInWithGoogle = async () => {
     setErr(null);
-    await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin + "/projects" },
+      options: { redirectTo },
     });
+    if (error) setErr(error.message);
   };
 
   const sendMagicLink = async (e: React.FormEvent) => {
@@ -22,7 +27,7 @@ export default function AuthPage() {
     setErr(null);
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin + "/projects" },
+      options: { emailRedirectTo: redirectTo },
     });
     if (error) setErr(error.message);
     else setSent(true);
@@ -85,3 +90,4 @@ export default function AuthPage() {
     </div>
   );
 }
+
