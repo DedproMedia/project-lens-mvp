@@ -8,15 +8,7 @@ export default async function ProjectsPage() {
         <h1 style={{ margin: 0 }}>Projects</h1>
         <AddProjectButton />
       </div>
-
-      <div
-        style={{
-          marginTop: 16,
-          border: "1px solid #eee",
-          borderRadius: 10,
-          padding: 16,
-        }}
-      >
+      <div style={{ marginTop: 16, border: "1px solid #eee", borderRadius: 10, padding: 16 }}>
         <ProjectsList />
       </div>
     </div>
