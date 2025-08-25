@@ -8,6 +8,7 @@ export default function AuthPage() {
   const [sent, setSent] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [working, setWorking] = useState<"google" | "email" | null>(null);
+  const [oauthUrl, setOauthUrl] = useState<string | null>(null);
 
   // Build redirect once on the client
   const redirectTo = useMemo(() => {
@@ -15,19 +16,20 @@ export default function AuthPage() {
     return window.location.origin + "/auth/callback";
   }, []);
 
-  // Preflight check — surfaces missing env keys right on the page
+  // Preflight: show if env vars are missing (common cause of silent failures)
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!url || !key) {
       setErr(
-        "Missing Supabase env vars. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel & locally."
+        "Missing Supabase env vars. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in Vercel (and locally)."
       );
     }
   }, []);
 
   const signInWithGoogle = async () => {
     setErr(null);
+    setOauthUrl(null);
     setWorking("google");
     try {
       const supabase = supabaseBrowser();
@@ -36,14 +38,20 @@ export default function AuthPage() {
         options: { redirectTo },
       });
       if (error) throw error;
-      // On success, browser navigates to Google (no further code runs here)
-      if (!data?.url) {
-        // Defensive: older libs sometimes don't return url; do manual redirect if present.
-        console.warn("No OAuth URL returned; if nothing happens, check Supabase provider setup.");
+
+      // Some environments don’t auto-redirect — do it manually if we have a URL
+      if (data?.url) {
+        setOauthUrl(data.url);           // show as a visible fallback link
+        window.location.href = data.url; // force navigation
+        return;
       }
+
+      // Defensive fallback
+      setErr("No OAuth URL returned. Double-check Google provider setup in Supabase.");
     } catch (e: any) {
       console.error("Google OAuth error:", e);
       setErr(e?.message ?? "Google sign-in failed. Check provider config.");
+    } finally {
       setWorking(null);
     }
   };
@@ -69,7 +77,7 @@ export default function AuthPage() {
   };
 
   return (
-    <div style={{ padding: 16, maxWidth: 420 }}>
+    <div style={{ padding: 16, maxWidth: 460 }}>
       <h1 style={{ marginTop: 0 }}>Sign in</h1>
 
       <button
@@ -89,6 +97,13 @@ export default function AuthPage() {
       >
         {working === "google" ? "Opening Google…" : "Continue with Google"}
       </button>
+
+      {/* Fallback: show the OAuth URL if auto-redirect didn’t happen */}
+      {oauthUrl && (
+        <p style={{ fontSize: 12, marginTop: 8 }}>
+          If nothing happened, <a href={oauthUrl}>click here to continue</a>.
+        </p>
+      )}
 
       <hr />
 
