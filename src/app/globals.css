@@ -1,21 +1,40 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-html, body { height: 100%; background: #0a0a0a; color: white; }
-// ...existing imports
-import Link from "next/link";
 
-export default function Sidebar() {
-  return (
-    <aside className="bg-white/5 border-r border-white/10 p-4">
-      <div className="text-xl font-semibold mb-4">Project Lens</div>
-
-      <nav className="grid gap-2 text-sm">
-        <Link href="/projects">Projects</Link>
-        <Link href="/projects/new">+ New Project</Link>
-        <Link href="/clients">Clients</Link>
-        <Link href="/clients/new">+ New Client</Link>
-      </nav>
-    </aside>
-  );
+/* Base theme */
+html, body {
+  height: 100%;
+  background: #0a0a0a;
+  color: white;
 }
+
+/* ---- Project Lens: readable form controls ---- */
+.pl-form input,
+.pl-form textarea,
+.pl-form select {
+  color: #111;               /* text you type */
+  background: #fff;          /* field background */
+  border: 1px solid #e5e7eb; /* light gray border */
+  border-radius: 6px;
+  caret-color: #111;
+  outline: none;
+}
+
+.pl-form input::placeholder,
+.pl-form textarea::placeholder {
+  color: #9ca3af; /* muted placeholder */
+}
+
+.pl-form button {
+  color: #111;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+/* Ensure text inside form blocks is readable */
+.pl-form {
+  color: #111;
+}
+
