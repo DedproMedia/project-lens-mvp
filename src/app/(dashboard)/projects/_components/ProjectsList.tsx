@@ -4,22 +4,19 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-type ProjectRow = {
-  id: string;
-  name: string;
-  headline_description: string | null;
-  created_at: string;
-  // Normalized joins (single objects or null)
-  client?: { name: string | null } | null;
-  status?: { name: string; color?: string | null } | null;
-
-  // Fallback fields
-  client_id?: string | null;
-  status_type_id?: number | null;
-};
-
 type Client = { id: string; name: string };
 type Status = { id: number; name: string; color: string | null };
+
+type ProjectRow = {
+  id: string;
+  display_name: string;
+  headline_description: string | null;
+  created_at: string;
+  client_id?: string | null;
+  status_type_id?: number | null;
+  client?: { name: string | null } | null;
+  status?: { name: string; color?: string | null } | null;
+};
 
 export default function ProjectsList() {
   const supabase = supabaseBrowser();
@@ -28,12 +25,11 @@ export default function ProjectsList() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // lookup caches if we can’t get nested relations directly
   const [clients, setClients] = useState<Record<string, Client>>({});
   const [statuses, setStatuses] = useState<Record<number, Status>>({});
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>(""); // status name
+  const [statusFilter, setStatusFilter] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -42,13 +38,13 @@ export default function ProjectsList() {
       setLoading(true);
       setErr(null);
 
-      // Try to fetch with nested relations first.
-      // Note: if FK metadata isn't set, PostgREST may return arrays for these.
-      const selectWithJoins =
-        "id,name,headline_description,created_at,client:clients(name),status:project_status_types(name,color),client_id,status_type_id";
+      // 1) Flexible select: get everything from projects and try to embed relations.
+      //    This avoids hard-coding a "name" column that may not exist in your schema.
+      const projectsSel =
+        "*, clients(name), project_status_types(name,color)";
 
       const [p, c, s] = await Promise.all([
-        supabase.from("projects").select(selectWithJoins).order("created_at", { ascending: false }),
+        supabase.from("projects").select(projectsSel).order("created_at", { ascending: false }),
         supabase.from("clients").select("id,name"),
         supabase.from("project_status_types").select("id,name,color"),
       ]);
@@ -61,7 +57,7 @@ export default function ProjectsList() {
         return;
       }
 
-      // build lookup maps
+      // lookup maps (used for fallback when embeds aren’t available)
       const clientMap: Record<string, Client> = {};
       (c.data || []).forEach((x: any) => (clientMap[x.id] = x as Client));
       setClients(clientMap);
@@ -76,19 +72,52 @@ export default function ProjectsList() {
         return;
       }
 
-      // 🔧 Normalize possible array joins to single objects
+      // 2) Normalize projects → ProjectRow
       const normalized: ProjectRow[] = (p.data || []).map((r: any) => {
-        const clientJoin = Array.isArray(r.client) ? (r.client[0] ?? null) : r.client ?? null;
-        const statusJoin = Array.isArray(r.status) ? (r.status[0] ?? null) : r.status ?? null;
+        // Derive a display name from any likely column
+        const display =
+          r.name ??
+          r.project_name ??
+          r.title ??
+          "(untitled)";
+
+        // headline/description flexible
+        const headline =
+          r.headline_description ??
+          r.description ??
+          r.summary ??
+          null;
+
+        // Relations may arrive under different keys / as arrays:
+        const clientJoinRaw = r.client ?? r.clients ?? null;
+        const clientJoin = Array.isArray(clientJoinRaw)
+          ? clientJoinRaw[0] ?? null
+          : clientJoinRaw ?? null;
+
+        const statusJoinRaw = r.status ?? r.project_status_types ?? null;
+        const statusJoin = Array.isArray(statusJoinRaw)
+          ? statusJoinRaw[0] ?? null
+          : statusJoinRaw ?? null;
+
+        // FKs may use different names; keep both possibilities handy
+        const statusId =
+          typeof r.status_type_id === "number"
+            ? r.status_type_id
+            : typeof r.status_id === "number"
+            ? r.status_id
+            : null;
+
         return {
-          id: r.id,
-          name: r.name,
-          headline_description: r.headline_description ?? null,
-          created_at: r.created_at,
+          id: String(r.id),
+          display_name: String(display),
+          headline_description: headline ? String(headline) : null,
+          created_at: r.created_at ?? new Date().toISOString(),
+          client_id: r.client_id ?? r.clientid ?? null,
+          status_type_id: statusId,
           client: clientJoin ? { name: clientJoin.name ?? null } : null,
-          status: statusJoin ? { name: statusJoin.name, color: statusJoin.color ?? null } : null,
-          client_id: r.client_id ?? null,
-          status_type_id: typeof r.status_type_id === "number" ? r.status_type_id : null,
+          status: statusJoin
+            ? { name: statusJoin.name, color: statusJoin.color ?? null }
+            : null,
         };
       });
 
@@ -105,11 +134,13 @@ export default function ProjectsList() {
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return rows.filter((r) => {
-      const nameHit = r.name.toLowerCase().includes(term);
+      const nameHit = r.display_name.toLowerCase().includes(term);
+
       const clientName =
         r.client?.name ??
         (r.client_id && clients[r.client_id] ? clients[r.client_id].name : "");
       const clientHit = clientName?.toLowerCase().includes(term);
+
       const statusName =
         r.status?.name ??
         (r.status_type_id && statuses[r.status_type_id] ? statuses[r.status_type_id].name : "");
@@ -117,7 +148,6 @@ export default function ProjectsList() {
 
       const termOk = !term || nameHit || clientHit || statusHit;
       const statusOk = !statusFilter || statusName === statusFilter;
-
       return termOk && statusOk;
     });
   }, [rows, clients, statuses, search, statusFilter]);
@@ -141,7 +171,7 @@ export default function ProjectsList() {
       <div style={{ padding: 12, color: "crimson" }}>
         Failed to load projects: {err}
         <div style={{ color: "#666", marginTop: 6, fontSize: 12 }}>
-          Tip: make sure you’re signed in and RLS allows reads.
+          Tip: If you’re not signed in, RLS may block reads. Also check column names in Supabase.
         </div>
       </div>
     );
@@ -215,7 +245,7 @@ export default function ProjectsList() {
                     <td style={{ padding: "10px 8px" }}>
                       <div style={{ fontWeight: 600 }}>
                         <Link href={`/projects/${r.id}`} style={{ textDecoration: "underline" }}>
-                          {r.name}
+                          {r.display_name}
                         </Link>
                       </div>
                       {r.headline_description && (
@@ -263,13 +293,9 @@ export default function ProjectsList() {
                     <td style={{ padding: "10px 8px" }}>{fmtDate(r.created_at)}</td>
                     <td style={{ padding: "10px 8px", textAlign: "right" }}>
                       <div style={{ display: "inline-flex", gap: 8 }}>
-                        <Link href={`/projects/${r.id}`} title="View">
-                          View
-                        </Link>
+                        <Link href={`/projects/${r.id}`} title="View">View</Link>
                         <span aria-hidden style={{ color: "#e5e7eb" }}>|</span>
-                        <Link href={`/projects/${r.id}?mode=edit`} title="Edit">
-                          Edit
-                        </Link>
+                        <Link href={`/projects/${r.id}?mode=edit`} title="Edit">Edit</Link>
                       </div>
                     </td>
                   </tr>
@@ -282,3 +308,4 @@ export default function ProjectsList() {
     </div>
   );
 }
+
