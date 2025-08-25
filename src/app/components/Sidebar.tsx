@@ -1,13 +1,18 @@
+// ...existing imports
+import Link from "next/link";
+
 export default function Sidebar() {
   return (
     <aside className="bg-white/5 border-r border-white/10 p-4">
       <div className="text-xl font-semibold mb-4">Project Lens</div>
+
       <nav className="grid gap-2 text-sm">
-        <a href="/projects">Projects</a>
-        <a href="/clients">Clients</a>
-        <a href="/settings/calendar">Calendar Settings</a>
-        <a href="/dashboard">Dashboard</a>
+        <Link href="/projects">Projects</Link>
+        <Link href="/projects/new">+ New Project</Link>
+        <Link href="/clients">Clients</Link>
+        <Link href="/clients/new">+ New Client</Link>
       </nav>
     </aside>
   );
 }
+
