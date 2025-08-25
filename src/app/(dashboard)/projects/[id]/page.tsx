@@ -15,7 +15,6 @@ type Client = { id: string; name: string };
 type StatusType = { id: number; name: string; color: string | null };
 type Currency = { code: string; name?: string | null };
 
-// Structure we persist in projects.config
 type ProjectConfig = {
   elements?: ElementKey[];
   visibility?: Record<ElementKey, boolean>;
@@ -25,8 +24,8 @@ type ProjectConfig = {
 
 type Project = {
   id: string;
-  name?: string | null;     // or
-  title?: string | null;    // either exists
+  name?: string | null;
+  title?: string | null;
   client_id?: string | null;
   headline_description?: string | null;
   created_at?: string;
@@ -34,13 +33,12 @@ type Project = {
 };
 
 export default function ProjectDetailPage() {
-  const params = useParams<{ id: string }>();
+  const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const search = useSearchParams();
-  const supabase = supabaseBrowser();
 
-  const modeParam = search.get("mode");
-  const [editMode, setEditMode] = useState(modeParam === "edit");
+  // set from URL once on mount
+  const [editMode, setEditMode] = useState(false);
 
   // loaded data
   const [proj, setProj] = useState<Project | null>(null);
@@ -51,7 +49,7 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // UI state (form)
+  // form state
   const [title, setTitle] = useState("");
   const [clientId, setClientId] = useState("");
   const [headline, setHeadline] = useState("");
@@ -65,19 +63,23 @@ export default function ProjectDetailPage() {
   const [editable, setEditable] = useState<Record<ElementKey, boolean>>(
     () => Object.fromEntries(ALL_ELEMENTS.map(k => [k, false])) as Record<ElementKey, boolean>
   );
-  const [data, setData] = useState<Record<string, any>>({}); // element values
+  const [data, setData] = useState<Record<string, any>>({});
 
   const [saving, setSaving] = useState(false);
 
-  // ----- load project + lookups -----
+  // ---------- load ONCE ----------
   useEffect(() => {
     let mounted = true;
+    setEditMode(search.get("mode") === "edit");
+
     const load = async () => {
       setLoading(true);
       setErr(null);
 
+      const supabase = supabaseBrowser();
+
       const [p, c, s, cur] = await Promise.all([
-        supabase.from("projects").select("*").eq("id", params.id).single(),
+        supabase.from("projects").select("*").eq("id", id).single(),
         supabase.from("clients").select("id,name").order("name"),
         supabase.from("project_status_types").select("id,name,color").order("name"),
         supabase.from("currencies").select("code,name").order("code"),
@@ -85,13 +87,12 @@ export default function ProjectDetailPage() {
 
       if (!mounted) return;
 
-      if (c.error) setErr(c.error.message);
-      else setClients(((c.data || []) as any[]).map(x => ({ id: String(x.id), name: String(x.name) })));
-
+      if (!c.error && c.data) {
+        setClients((c.data as any[]).map(x => ({ id: String(x.id), name: String(x.name) })));
+      }
       if (!s.error && s.data) {
         setStatuses((s.data as any[]).map(x => ({ id: Number(x.id), name: String(x.name), color: x.color ?? null })));
       }
-
       if (!cur.error && cur.data) {
         setCurrencies((cur.data as any[]).map(x => ({ code: String(x.code), name: x.name ?? null })));
       }
@@ -113,13 +114,12 @@ export default function ProjectDetailPage() {
       };
       setProj(record);
 
-      // hydrate basics
+      // hydrate
       const derivedTitle = record.name ?? record.title ?? "";
       setTitle(derivedTitle);
       setClientId(record.client_id ?? "");
       setHeadline(record.headline_description ?? "");
 
-      // hydrate config
       const cfg = (record.config ?? {}) as ProjectConfig;
       const a = Object.fromEntries(ALL_ELEMENTS.map(k => [k, Boolean(cfg.elements?.includes(k))])) as Record<ElementKey, boolean>;
       const v = Object.fromEntries(ALL_ELEMENTS.map(k => [k, Boolean(cfg.visibility?.[k])])) as Record<ElementKey, boolean>;
@@ -129,26 +129,28 @@ export default function ProjectDetailPage() {
 
       setLoading(false);
     };
+
     load();
     return () => { mounted = false; };
-  }, [params.id, supabase]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // IMPORTANT: empty deps — no flicker
 
   const selectedElements = useMemo(() => ALL_ELEMENTS.filter(k => active[k]), [active]);
   const toggle = (state: any, setState: any, key: ElementKey) =>
     setState((s: any) => ({ ...s, [key]: !s[key] }));
 
-  // helpers to read/write data
   const getD = <T,>(key: string, fallback: T): T =>
     (data?.[key] ?? fallback) as T;
 
   const setD = (key: string, value: any) =>
     setData(d => ({ ...d, [key]: value }));
 
-  // ----- save -----
   const save = async () => {
     if (!proj) return;
     setSaving(true);
     setErr(null);
+
+    const supabase = supabaseBrowser();
 
     const config: ProjectConfig = {
       elements: selectedElements,
@@ -185,12 +187,23 @@ export default function ProjectDetailPage() {
     setEditMode(false);
   };
 
-  // ----- derived helpers -----
   const fmtDate = (iso?: string) =>
     iso ? new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "—";
 
   if (loading) return <div style={{ padding: 16 }}>Loading project…</div>;
-  if (err) return <div style={{ padding: 16, color: "crimson" }}>Error: {err}</div>;
+  if (err) {
+    const authish = /permission|rls|auth|401|403|JWT/i.test(err);
+    return (
+      <div style={{ padding: 16, color: "crimson" }}>
+        Error: {err}
+        <div style={{ color: "#555", marginTop: 6, fontSize: 12 }}>
+          {authish
+            ? "Tip: Your RLS may block reads/updates when signed out. (You can keep the dev anon policy enabled while building.)"
+            : "Tip: Check your projects columns (name/title) and that the row exists."}
+        </div>
+      </div>
+    );
+  }
   if (!proj) return <div style={{ padding: 16 }}>Not found.</div>;
 
   return (
@@ -210,7 +223,6 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* Meta line */}
       <div style={{ color: "#555", fontSize: 13, marginTop: 6 }}>
         Created: {fmtDate(proj.created_at)}
       </div>
@@ -313,7 +325,7 @@ export default function ProjectDetailPage() {
         )}
       </Section>
 
-      {/* Element editors (only shown if active) */}
+      {/* Element editors */}
       {active["project_status"] && (
         <Section title="Project Status">
           {editMode ? (
@@ -340,11 +352,9 @@ export default function ProjectDetailPage() {
       {active["client_budget"] && (
         <Section title="Client Budget">
           {editMode ? (
-            <Row>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <input
-                type="number"
-                step="0.01"
-                placeholder="Amount"
+                type="number" step="0.01" placeholder="Amount"
                 value={getD<number>("client_budget.amount", "" as any)}
                 onChange={(e) => setD("client_budget.amount", e.target.value === "" ? null : Number(e.target.value))}
                 style={{ maxWidth: 200 }}
@@ -357,10 +367,10 @@ export default function ProjectDetailPage() {
                 <option value="">Currency</option>
                 {currencies.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
               </select>
-            </Row>
+            </div>
           ) : (
             <KV label="Client Budget"
-                value={fmtMoney(getD<number>("client_budget.amount", 0), getD<string>("client_budget.currency","")) || "—"} />
+              value={fmtMoney(getD<number>("client_budget.amount", 0), getD<string>("client_budget.currency","")) || "—"} />
           )}
         </Section>
       )}
@@ -368,11 +378,9 @@ export default function ProjectDetailPage() {
       {active["project_cost"] && (
         <Section title="Project Cost">
           {editMode ? (
-            <Row>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <input
-                type="number"
-                step="0.01"
-                placeholder="Amount"
+                type="number" step="0.01" placeholder="Amount"
                 value={getD<number>("project_cost.amount", "" as any)}
                 onChange={(e) => setD("project_cost.amount", e.target.value === "" ? null : Number(e.target.value))}
                 style={{ maxWidth: 200 }}
@@ -385,10 +393,10 @@ export default function ProjectDetailPage() {
                 <option value="">Currency</option>
                 {currencies.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
               </select>
-            </Row>
+            </div>
           ) : (
             <KV label="Project Cost"
-                value={fmtMoney(getD<number>("project_cost.amount", 0), getD<string>("project_cost.currency","")) || "—"} />
+              value={fmtMoney(getD<number>("project_cost.amount", 0), getD<string>("project_cost.currency","")) || "—"} />
           )}
         </Section>
       )}
@@ -563,7 +571,7 @@ export default function ProjectDetailPage() {
   );
 }
 
-/* ---------- small presentational helpers ---------- */
+/* ---------- presentational helpers ---------- */
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -587,10 +595,6 @@ function Grid({ cols, gap, children, maxW }:{ cols:number; gap:number; children:
   );
 }
 
-function Row({ children }:{ children: React.ReactNode }) {
-  return <div style={{ display: "flex", gap: 8, alignItems: "center" }}>{children}</div>;
-}
-
 function KV({ label, value }:{ label:string; value:any }) {
   return <div><strong>{label}:</strong> {value ?? "—"}</div>;
 }
@@ -605,14 +609,6 @@ function ListLines({ text, empty }:{ text:string; empty:string }) {
   return <ul style={{ margin: 0, paddingLeft: 18 }}>{lines.map((l,i)=><li key={i}>{l}</li>)}</ul>;
 }
 
-function num(x:any){ const n = Number(x); return Number.isFinite(n) ? n : 0; }
-function fmtMoney(amount:number, code?:string){
-  if(!amount) return "";
-  try { return new Intl.NumberFormat(undefined, { style:"currency", currency: code || "USD" }).format(amount); }
-  catch { return `${code||""} ${amount.toFixed(2)}`.trim(); }
-}
-
-/* A tiny dynamic table editor used for array-based elements */
 function ArrayTable({
   edit, rows, onChange, columns, footerTotal
 }:{
@@ -755,6 +751,13 @@ function labelFor(key: ElementKey) {
     case "additional_requests": return "Additional Requests";
     case "notes": return "Notes";
   }
+}
+
+function num(x:any){ const n = Number(x); return Number.isFinite(n) ? n : 0; }
+function fmtMoney(amount:number, code?:string){
+  if(!amount) return "";
+  try { return new Intl.NumberFormat(undefined, { style:"currency", currency: code || "USD" }).format(amount); }
+  catch { return `${code||""} ${amount.toFixed(2)}`.trim(); }
 }
 
 
