@@ -19,8 +19,6 @@ type ProjectRow = {
 };
 
 export default function ProjectsList() {
-  const supabase = supabaseBrowser();
-
   const [rows, setRows] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -32,16 +30,16 @@ export default function ProjectsList() {
   const [statusFilter, setStatusFilter] = useState<string>("");
 
   useEffect(() => {
-    let cancelled = false;
+    let mounted = true;
 
     const load = async () => {
       setLoading(true);
       setErr(null);
 
-      // 1) Flexible select: get everything from projects and try to embed relations.
-      //    This avoids hard-coding a "name" column that may not exist in your schema.
-      const projectsSel =
-        "*, clients(name), project_status_types(name,color)";
+      const supabase = supabaseBrowser();
+
+      // Flexible select to tolerate schema diffs; embeds if available
+      const projectsSel = "*, clients(name), project_status_types(name,color)";
 
       const [p, c, s] = await Promise.all([
         supabase.from("projects").select(projectsSel).order("created_at", { ascending: false }),
@@ -49,63 +47,44 @@ export default function ProjectsList() {
         supabase.from("project_status_types").select("id,name,color"),
       ]);
 
-      if (cancelled) return;
+      if (!mounted) return;
 
-      if (c.error || s.error) {
-        setErr((c.error?.message || s.error?.message) ?? "Failed to load lookups");
-        setLoading(false);
-        return;
+      // Lookup maps
+      if (!c.error && c.data) {
+        const cmap: Record<string, Client> = {};
+        (c.data as any[]).forEach((x) => (cmap[x.id] = { id: String(x.id), name: String(x.name) }));
+        setClients(cmap);
       }
 
-      // lookup maps (used for fallback when embeds aren’t available)
-      const clientMap: Record<string, Client> = {};
-      (c.data || []).forEach((x: any) => (clientMap[x.id] = x as Client));
-      setClients(clientMap);
-
-      const statusMap: Record<number, Status> = {};
-      (s.data || []).forEach((x: any) => (statusMap[x.id] = x as Status));
-      setStatuses(statusMap);
+      if (!s.error && s.data) {
+        const smap: Record<number, Status> = {};
+        (s.data as any[]).forEach((x) => (smap[x.id] = { id: Number(x.id), name: String(x.name), color: x.color ?? null }));
+        setStatuses(smap);
+      }
 
       if (p.error) {
+        // Show a stable error message and stop loading
         setErr(p.error.message);
         setLoading(false);
         return;
       }
 
-      // 2) Normalize projects → ProjectRow
-      const normalized: ProjectRow[] = (p.data || []).map((r: any) => {
-        // Derive a display name from any likely column
-        const display =
-          r.name ??
-          r.project_name ??
-          r.title ??
-          "(untitled)";
+      const normalized: ProjectRow[] = (p.data as any[] | null | undefined)?.map((r: any) => {
+        // Derive display name from likely columns
+        const display = r.name ?? r.project_name ?? r.title ?? "(untitled)";
+        const headline = r.headline_description ?? r.description ?? r.summary ?? null;
 
-        // headline/description flexible
-        const headline =
-          r.headline_description ??
-          r.description ??
-          r.summary ??
-          null;
-
-        // Relations may arrive under different keys / as arrays:
+        // Normalize possible array/object joins
         const clientJoinRaw = r.client ?? r.clients ?? null;
-        const clientJoin = Array.isArray(clientJoinRaw)
-          ? clientJoinRaw[0] ?? null
-          : clientJoinRaw ?? null;
+        const clientJoin = Array.isArray(clientJoinRaw) ? clientJoinRaw[0] ?? null : clientJoinRaw ?? null;
 
         const statusJoinRaw = r.status ?? r.project_status_types ?? null;
-        const statusJoin = Array.isArray(statusJoinRaw)
-          ? statusJoinRaw[0] ?? null
-          : statusJoinRaw ?? null;
+        const statusJoin = Array.isArray(statusJoinRaw) ? statusJoinRaw[0] ?? null : statusJoinRaw ?? null;
 
-        // FKs may use different names; keep both possibilities handy
         const statusId =
-          typeof r.status_type_id === "number"
-            ? r.status_type_id
-            : typeof r.status_id === "number"
-            ? r.status_id
-            : null;
+          typeof r.status_type_id === "number" ? r.status_type_id
+          : typeof r.status_id === "number" ? r.status_id
+          : null;
 
         return {
           id: String(r.id),
@@ -115,32 +94,30 @@ export default function ProjectsList() {
           client_id: r.client_id ?? r.clientid ?? null,
           status_type_id: statusId,
           client: clientJoin ? { name: clientJoin.name ?? null } : null,
-          status: statusJoin
-            ? { name: statusJoin.name, color: statusJoin.color ?? null }
-            : null,
+          status: statusJoin ? { name: statusJoin.name, color: statusJoin.color ?? null } : null,
         };
-      });
+      }) ?? [];
 
       setRows(normalized);
       setLoading(false);
     };
 
+    // fire once
     load();
+
     return () => {
-      cancelled = true;
+      mounted = false;
     };
-  }, [supabase]);
+  }, []); // IMPORTANT: empty deps so it doesn't loop
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return rows.filter((r) => {
       const nameHit = r.display_name.toLowerCase().includes(term);
-
       const clientName =
         r.client?.name ??
         (r.client_id && clients[r.client_id] ? clients[r.client_id].name : "");
       const clientHit = clientName?.toLowerCase().includes(term);
-
       const statusName =
         r.status?.name ??
         (r.status_type_id && statuses[r.status_type_id] ? statuses[r.status_type_id].name : "");
@@ -163,20 +140,6 @@ export default function ProjectsList() {
     return Array.from(set.values()).sort();
   }, [rows, statuses]);
 
-  if (loading) {
-    return <div style={{ padding: 12 }}>Loading projects…</div>;
-  }
-  if (err) {
-    return (
-      <div style={{ padding: 12, color: "crimson" }}>
-        Failed to load projects: {err}
-        <div style={{ color: "#666", marginTop: 6, fontSize: 12 }}>
-          Tip: If you’re not signed in, RLS may block reads. Also check column names in Supabase.
-        </div>
-      </div>
-    );
-  }
-
   const fmtDate = (iso: string) =>
     new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 
@@ -193,6 +156,24 @@ export default function ProjectsList() {
       (r.status_type_id && statuses[r.status_type_id] ? statuses[r.status_type_id].color : undefined);
     return { name: name || "—", color: color || "#9ca3af" };
   };
+
+  if (loading) {
+    return <div style={{ padding: 12 }}>Loading projects…</div>;
+  }
+
+  if (err) {
+    const isAuthish = /permission|rls|auth|401|403|JWT/i.test(err);
+    return (
+      <div style={{ padding: 12, color: "crimson" }}>
+        Failed to load projects: {err}
+        <div style={{ color: "#666", marginTop: 6, fontSize: 12 }}>
+          {isAuthish
+            ? "Tip: You may not be signed in or RLS is blocking reads."
+            : "Tip: Check your projects table columns match (e.g., name/title) or adjust the selector."}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -308,4 +289,5 @@ export default function ProjectsList() {
     </div>
   );
 }
+
 
