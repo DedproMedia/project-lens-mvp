@@ -15,10 +15,10 @@ type Client = { id: string; name: string };
 
 export default function NewProjectPage() {
   const router = useRouter();
-  const supabase = supabaseBrowser();
 
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
+  const [clientsErr, setClientsErr] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
   const [clientId, setClientId] = useState("");
@@ -38,21 +38,32 @@ export default function NewProjectPage() {
   const [err, setErr] = useState<string | null>(null);
   const [collabLink, setCollabLink] = useState<string | null>(null);
 
+  // Load clients ONCE, and create the Supabase client inside the effect
   useEffect(() => {
+    let mounted = true;
     const loadClients = async () => {
       setLoadingClients(true);
-      const { data, error } = await supabase.from("clients").select("id,name").order("name");
-      setLoadingClients(false);
+      setClientsErr(null);
+      const supabase = supabaseBrowser();
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id,name")
+        .order("name");
+      if (!mounted) return;
       if (error) {
-        setErr(error.message);
-        return;
+        setClientsErr(error.message);
+        setClients([]);
+      } else {
+        setClients((data || []).map((c: any) => ({ id: String(c.id), name: String(c.name) })));
       }
-      setClients((data || []).map((c: any) => ({ id: String(c.id), name: String(c.name) })));
+      setLoadingClients(false);
     };
     loadClients();
-  }, [supabase]);
+    return () => { mounted = false; };
+  }, []); // IMPORTANT: empty deps → no flicker
 
   const selectedElements = useMemo(() => ALL_ELEMENTS.filter((k) => active[k]), [active]);
+
   const toggle = (state: any, setState: any, key: ElementKey) =>
     setState((s: any) => ({ ...s, [key]: !s[key] }));
 
@@ -60,6 +71,8 @@ export default function NewProjectPage() {
     e.preventDefault();
     setErr(null);
     setSaving(true);
+
+    const supabase = supabaseBrowser();
 
     const insertPayload: Record<string, any> = {
       headline_description: headline || null,
@@ -108,13 +121,20 @@ export default function NewProjectPage() {
     router.push(`/projects`);
   };
 
+  const clientPlaceholder =
+    loadingClients
+      ? "Loading clients…"
+      : clients.length === 0
+      ? "No clients yet — add one"
+      : "— Select client —";
+
   return (
     <div style={{ padding: 16, maxWidth: 900 }}>
       <h1 style={{ marginTop: 0 }}>New Project</h1>
 
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 16 }}>
         {/* Basics */}
-        <section style={{ border: "1px solid #eee", borderRadius: 10, padding: 16 }}>
+        <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16 }}>
           <h3 style={{ margin: "0 0 8px" }}>Basics</h3>
 
           <label style={{ display: "block", marginBottom: 8 }}>
@@ -137,19 +157,25 @@ export default function NewProjectPage() {
                 disabled={loadingClients}
                 style={{ display: "block", width: "100%", marginTop: 4 }}
               >
-                <option value="">
-                  {loadingClients ? "Loading clients…" : "— Select client —"}
-                </option>
+                <option value="">{clientPlaceholder}</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
               </select>
-              <a href="/clients/new" style={{ alignSelf: "center", whiteSpace: "nowrap", marginTop: 4 }}>
+              <a
+                href="/clients/new"
+                style={{ alignSelf: "center", whiteSpace: "nowrap", marginTop: 4 }}
+              >
                 + New
               </a>
             </div>
+            {clientsErr && (
+              <div style={{ color: "crimson", marginTop: 6, fontSize: 12 }}>
+                Failed to load clients: {clientsErr}
+              </div>
+            )}
           </label>
 
           <label style={{ display: "block" }}>
@@ -163,7 +189,7 @@ export default function NewProjectPage() {
         </section>
 
         {/* Elements */}
-        <section style={{ border: "1px solid #eee", borderRadius: 10, padding: 16 }}>
+        <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16 }}>
           <h3 style={{ margin: "0 0 8px" }}>Project Elements</h3>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
             {ALL_ELEMENTS.map((key) => (
@@ -181,7 +207,7 @@ export default function NewProjectPage() {
 
         {/* Permissions */}
         {selectedElements.length > 0 && (
-          <section style={{ border: "1px solid #eee", borderRadius: 10, padding: 16 }}>
+          <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16 }}>
             <h3 style={{ margin: "0 0 8px" }}>Client Permissions</h3>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
@@ -217,11 +243,7 @@ export default function NewProjectPage() {
         )}
 
         <div style={{ display: "flex", gap: 8 }}>
-          <button
-            type="submit"
-            disabled={saving}
-            style={{ padding: "10px 14px" }}
-          >
+          <button type="submit" disabled={saving} style={{ padding: "10px 14px" }}>
             {saving ? "Creating…" : "Create project"}
           </button>
         </div>
@@ -268,5 +290,6 @@ function cryptoRandom(len: number) {
   for (let i = 0; i < len; i++) out += alphabet[arr[i] % alphabet.length];
   return out;
 }
+
 
 
