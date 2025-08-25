@@ -9,11 +9,11 @@ type ProjectRow = {
   name: string;
   headline_description: string | null;
   created_at: string;
-  // Nested relations (if Supabase can infer FKs)
+  // Normalized joins (single objects or null)
   client?: { name: string | null } | null;
   status?: { name: string; color?: string | null } | null;
 
-  // Fallback fields (if relations don’t hydrate)
+  // Fallback fields
   client_id?: string | null;
   status_type_id?: number | null;
 };
@@ -42,7 +42,8 @@ export default function ProjectsList() {
       setLoading(true);
       setErr(null);
 
-      // Try to fetch with nested relations first (works if FKs are set)
+      // Try to fetch with nested relations first.
+      // Note: if FK metadata isn't set, PostgREST may return arrays for these.
       const selectWithJoins =
         "id,name,headline_description,created_at,client:clients(name),status:project_status_types(name,color),client_id,status_type_id";
 
@@ -60,13 +61,13 @@ export default function ProjectsList() {
         return;
       }
 
-      // build lookup maps (handy both as fallback and for filters)
+      // build lookup maps
       const clientMap: Record<string, Client> = {};
-      (c.data || []).forEach((x) => (clientMap[x.id] = x as Client));
+      (c.data || []).forEach((x: any) => (clientMap[x.id] = x as Client));
       setClients(clientMap);
 
       const statusMap: Record<number, Status> = {};
-      (s.data || []).forEach((x) => (statusMap[x.id] = x as Status));
+      (s.data || []).forEach((x: any) => (statusMap[x.id] = x as Status));
       setStatuses(statusMap);
 
       if (p.error) {
@@ -75,7 +76,23 @@ export default function ProjectsList() {
         return;
       }
 
-      setRows((p.data || []) as ProjectRow[]);
+      // 🔧 Normalize possible array joins to single objects
+      const normalized: ProjectRow[] = (p.data || []).map((r: any) => {
+        const clientJoin = Array.isArray(r.client) ? (r.client[0] ?? null) : r.client ?? null;
+        const statusJoin = Array.isArray(r.status) ? (r.status[0] ?? null) : r.status ?? null;
+        return {
+          id: r.id,
+          name: r.name,
+          headline_description: r.headline_description ?? null,
+          created_at: r.created_at,
+          client: clientJoin ? { name: clientJoin.name ?? null } : null,
+          status: statusJoin ? { name: statusJoin.name, color: statusJoin.color ?? null } : null,
+          client_id: r.client_id ?? null,
+          status_type_id: typeof r.status_type_id === "number" ? r.status_type_id : null,
+        };
+      });
+
+      setRows(normalized);
       setLoading(false);
     };
 
@@ -99,7 +116,6 @@ export default function ProjectsList() {
       const statusHit = statusName?.toLowerCase().includes(term);
 
       const termOk = !term || nameHit || clientHit || statusHit;
-
       const statusOk = !statusFilter || statusName === statusFilter;
 
       return termOk && statusOk;
@@ -107,7 +123,6 @@ export default function ProjectsList() {
   }, [rows, clients, statuses, search, statusFilter]);
 
   const uniqueStatuses = useMemo(() => {
-    // collect unique status names from either nested or fallback
     const set = new Set<string>();
     rows.forEach((r) => {
       const n =
@@ -204,7 +219,17 @@ export default function ProjectsList() {
                         </Link>
                       </div>
                       {r.headline_description && (
-                        <div style={{ color: "#6b7280", fontSize: 12, marginTop: 2, maxWidth: 560, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div
+                          style={{
+                            color: "#6b7280",
+                            fontSize: 12,
+                            marginTop: 2,
+                            maxWidth: 560,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {r.headline_description}
                         </div>
                       )}
@@ -238,9 +263,13 @@ export default function ProjectsList() {
                     <td style={{ padding: "10px 8px" }}>{fmtDate(r.created_at)}</td>
                     <td style={{ padding: "10px 8px", textAlign: "right" }}>
                       <div style={{ display: "inline-flex", gap: 8 }}>
-                        <Link href={`/projects/${r.id}`} title="View">View</Link>
+                        <Link href={`/projects/${r.id}`} title="View">
+                          View
+                        </Link>
                         <span aria-hidden style={{ color: "#e5e7eb" }}>|</span>
-                        <Link href={`/projects/${r.id}?mode=edit`} title="Edit">Edit</Link>
+                        <Link href={`/projects/${r.id}?mode=edit`} title="Edit">
+                          Edit
+                        </Link>
                       </div>
                     </td>
                   </tr>
@@ -253,5 +282,3 @@ export default function ProjectsList() {
     </div>
   );
 }
-
-
