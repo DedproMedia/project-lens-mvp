@@ -1,52 +1,257 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabaseBrowser } from "../../../../lib/supabase-browser";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
-type Project = {
+type ProjectRow = {
   id: string;
   name: string;
-  description: string | null;
-  status: string | null;
+  headline_description: string | null;
   created_at: string;
+  // Nested relations (if Supabase can infer FKs)
+  client?: { name: string | null } | null;
+  status?: { name: string; color?: string | null } | null;
+
+  // Fallback fields (if relations don’t hydrate)
+  client_id?: string | null;
+  status_type_id?: number | null;
 };
 
+type Client = { id: string; name: string };
+type Status = { id: number; name: string; color: string | null };
+
 export default function ProjectsList() {
-  const [rows, setRows] = useState<Project[] | null>(null);
+  const supabase = supabaseBrowser();
+
+  const [rows, setRows] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
+  // lookup caches if we can’t get nested relations directly
+  const [clients, setClients] = useState<Record<string, Client>>({});
+  const [statuses, setStatuses] = useState<Record<number, Status>>({});
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>(""); // status name
+
   useEffect(() => {
-    const supabase = supabaseBrowser();
+    let cancelled = false;
 
     const load = async () => {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("id,name,description,status,created_at")
-        .order("created_at", { ascending: false });
-      if (error) setErr(error.message);
-      else setRows(data as Project[]);
+      setLoading(true);
+      setErr(null);
+
+      // Try to fetch with nested relations first (works if FKs are set)
+      const selectWithJoins =
+        "id,name,headline_description,created_at,client:clients(name),status:project_status_types(name,color),client_id,status_type_id";
+
+      const [p, c, s] = await Promise.all([
+        supabase.from("projects").select(selectWithJoins).order("created_at", { ascending: false }),
+        supabase.from("clients").select("id,name"),
+        supabase.from("project_status_types").select("id,name,color"),
+      ]);
+
+      if (cancelled) return;
+
+      if (c.error || s.error) {
+        setErr((c.error?.message || s.error?.message) ?? "Failed to load lookups");
+        setLoading(false);
+        return;
+      }
+
+      // build lookup maps (handy both as fallback and for filters)
+      const clientMap: Record<string, Client> = {};
+      (c.data || []).forEach((x) => (clientMap[x.id] = x as Client));
+      setClients(clientMap);
+
+      const statusMap: Record<number, Status> = {};
+      (s.data || []).forEach((x) => (statusMap[x.id] = x as Status));
+      setStatuses(statusMap);
+
+      if (p.error) {
+        setErr(p.error.message);
+        setLoading(false);
+        return;
+      }
+
+      setRows((p.data || []) as ProjectRow[]);
       setLoading(false);
     };
 
     load();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
 
-  if (loading) return <p style={{ color: "#666" }}>Loading projects…</p>;
-  if (err) return <p style={{ color: "crimson" }}>Error: {err}</p>;
-  if (!rows || rows.length === 0) return <p>No projects yet.</p>;
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return rows.filter((r) => {
+      const nameHit = r.name.toLowerCase().includes(term);
+      const clientName =
+        r.client?.name ??
+        (r.client_id && clients[r.client_id] ? clients[r.client_id].name : "");
+      const clientHit = clientName?.toLowerCase().includes(term);
+      const statusName =
+        r.status?.name ??
+        (r.status_type_id && statuses[r.status_type_id] ? statuses[r.status_type_id].name : "");
+      const statusHit = statusName?.toLowerCase().includes(term);
+
+      const termOk = !term || nameHit || clientHit || statusHit;
+
+      const statusOk = !statusFilter || statusName === statusFilter;
+
+      return termOk && statusOk;
+    });
+  }, [rows, clients, statuses, search, statusFilter]);
+
+  const uniqueStatuses = useMemo(() => {
+    // collect unique status names from either nested or fallback
+    const set = new Set<string>();
+    rows.forEach((r) => {
+      const n =
+        r.status?.name ??
+        (r.status_type_id && statuses[r.status_type_id] ? statuses[r.status_type_id].name : "");
+      if (n) set.add(n);
+    });
+    return Array.from(set.values()).sort();
+  }, [rows, statuses]);
+
+  if (loading) {
+    return <div style={{ padding: 12 }}>Loading projects…</div>;
+  }
+  if (err) {
+    return (
+      <div style={{ padding: 12, color: "crimson" }}>
+        Failed to load projects: {err}
+        <div style={{ color: "#666", marginTop: 6, fontSize: 12 }}>
+          Tip: make sure you’re signed in and RLS allows reads.
+        </div>
+      </div>
+    );
+  }
+
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+
+  const getClientName = (r: ProjectRow) =>
+    r.client?.name ??
+    (r.client_id && clients[r.client_id] ? clients[r.client_id].name : "—");
+
+  const getStatus = (r: ProjectRow) => {
+    const name =
+      r.status?.name ??
+      (r.status_type_id && statuses[r.status_type_id] ? statuses[r.status_type_id].name : undefined);
+    const color =
+      r.status?.color ??
+      (r.status_type_id && statuses[r.status_type_id] ? statuses[r.status_type_id].color : undefined);
+    return { name: name || "—", color: color || "#9ca3af" };
+  };
 
   return (
-    <ul style={{ marginTop: 12 }}>
-      {rows.map((p) => (
-        <li key={p.id} style={{ padding: "8px 0", borderBottom: "1px solid #eee" }}>
-          <a href={`/projects/${p.id}`} style={{ fontWeight: 600 }}>{p.name}</a>
-          <div style={{ fontSize: 12, color: "#666" }}>
-            {p.status || "draft"}{p.description ? ` · ${p.description}` : ""}
-          </div>
-        </li>
-      ))}
-    </ul>
+    <div>
+      {/* Controls */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+        <input
+          placeholder="Search by project, client, or status…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ padding: 8, border: "1px solid #e5e7eb", borderRadius: 6, flex: 1 }}
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{ padding: 8, border: "1px solid #e5e7eb", borderRadius: 6 }}
+        >
+          <option value="">All statuses</option>
+          {uniqueStatuses.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Table */}
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>
+              <th style={{ padding: "10px 8px" }}>Project</th>
+              <th style={{ padding: "10px 8px" }}>Client</th>
+              <th style={{ padding: "10px 8px" }}>Status</th>
+              <th style={{ padding: "10px 8px" }}>Created</th>
+              <th style={{ padding: "10px 8px", textAlign: "right" }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={5} style={{ padding: 12, color: "#6b7280" }}>
+                  No projects found.
+                </td>
+              </tr>
+            ) : (
+              filtered.map((r) => {
+                const { name: statusName, color } = getStatus(r);
+                return (
+                  <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    <td style={{ padding: "10px 8px" }}>
+                      <div style={{ fontWeight: 600 }}>
+                        <Link href={`/projects/${r.id}`} style={{ textDecoration: "underline" }}>
+                          {r.name}
+                        </Link>
+                      </div>
+                      {r.headline_description && (
+                        <div style={{ color: "#6b7280", fontSize: 12, marginTop: 2, maxWidth: 560, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {r.headline_description}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: "10px 8px" }}>{getClientName(r)}</td>
+                    <td style={{ padding: "10px 8px" }}>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          border: "1px solid #e5e7eb",
+                          background: "#fff",
+                        }}
+                      >
+                        <span
+                          aria-hidden
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 999,
+                            background: color || "#9ca3af",
+                            display: "inline-block",
+                          }}
+                        />
+                        <span>{statusName}</span>
+                      </span>
+                    </td>
+                    <td style={{ padding: "10px 8px" }}>{fmtDate(r.created_at)}</td>
+                    <td style={{ padding: "10px 8px", textAlign: "right" }}>
+                      <div style={{ display: "inline-flex", gap: 8 }}>
+                        <Link href={`/projects/${r.id}`} title="View">View</Link>
+                        <span aria-hidden style={{ color: "#e5e7eb" }}>|</span>
+                        <Link href={`/projects/${r.id}?mode=edit`} title="Edit">Edit</Link>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
+
 
