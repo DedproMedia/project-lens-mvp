@@ -109,10 +109,11 @@ export default function NewProjectPage() {
   };
 
   return (
-    <div className="pl-form" style={{ padding: 16, maxWidth: 900 }}>
+    <div style={{ padding: 16, maxWidth: 900 }}>
       <h1 style={{ marginTop: 0 }}>New Project</h1>
 
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 16 }}>
+        {/* Basics */}
         <section style={{ border: "1px solid #eee", borderRadius: 10, padding: 16 }}>
           <h3 style={{ margin: "0 0 8px" }}>Basics</h3>
 
@@ -122,28 +123,33 @@ export default function NewProjectPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
-              style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
+              style={{ display: "block", width: "100%", marginTop: 4 }}
             />
           </label>
 
           <label style={{ display: "block", marginBottom: 8 }}>
             Client
-            <select
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              required
-              disabled={loadingClients}
-              style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
-            >
-              <option value="" disabled>
-                {loadingClients ? "Loading clients…" : "Select a client"}
-              </option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+            <div style={{ display: "flex", gap: 8 }}>
+              <select
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                required
+                disabled={loadingClients}
+                style={{ display: "block", width: "100%", marginTop: 4 }}
+              >
+                <option value="">
+                  {loadingClients ? "Loading clients…" : "— Select client —"}
                 </option>
-              ))}
-            </select>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <a href="/clients/new" style={{ alignSelf: "center", whiteSpace: "nowrap", marginTop: 4 }}>
+                + New
+              </a>
+            </div>
           </label>
 
           <label style={{ display: "block" }}>
@@ -151,11 +157,12 @@ export default function NewProjectPage() {
             <textarea
               value={headline}
               onChange={(e) => setHeadline(e.target.value)}
-              style={{ display: "block", width: "100%", padding: 8, marginTop: 4, minHeight: 80 }}
+              style={{ display: "block", width: "100%", marginTop: 4, minHeight: 80 }}
             />
           </label>
         </section>
 
+        {/* Elements */}
         <section style={{ border: "1px solid #eee", borderRadius: 10, padding: 16 }}>
           <h3 style={{ margin: "0 0 8px" }}>Project Elements</h3>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
@@ -172,6 +179,7 @@ export default function NewProjectPage() {
           </div>
         </section>
 
+        {/* Permissions */}
         {selectedElements.length > 0 && (
           <section style={{ border: "1px solid #eee", borderRadius: 10, padding: 16 }}>
             <h3 style={{ margin: "0 0 8px" }}>Client Permissions</h3>
@@ -209,7 +217,11 @@ export default function NewProjectPage() {
         )}
 
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="submit" disabled={saving} style={{ padding: "10px 14px" }}>
+          <button
+            type="submit"
+            disabled={saving}
+            style={{ padding: "10px 14px" }}
+          >
             {saving ? "Creating…" : "Create project"}
           </button>
         </div>
@@ -256,4 +268,5 @@ function cryptoRandom(len: number) {
   for (let i = 0; i < len; i++) out += alphabet[arr[i] % alphabet.length];
   return out;
 }
+
 
