@@ -1,3 +1,4 @@
+// FILE 1: src/app/(dashboard)/projects/[id]/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -10,20 +11,21 @@ const ALL_ELEMENTS = [
   "headline_description","client_budget","project_cost","style_direction","shotlist",
   "delivery_links","expenses","terms_and_conditions","rams","insurance","additional_requests","notes",
 ] as const;
+
 type ElementKey = (typeof ALL_ELEMENTS)[number];
 
 type Client = { id: string; name: string };
-type StatusType = { id: number; name: string; color: string | null };
-type Currency = { code: string; name?: string | null };
+interface StatusType { id: number; name: string; color: string | null }
+interface Currency { code: string; name?: string | null }
 
-type ProjectConfig = {
+interface ProjectConfig {
   elements?: ElementKey[];
   visibility?: Record<ElementKey, boolean>;
   editability?: Record<ElementKey, boolean>;
   data?: Record<string, any>;
-};
+}
 
-type Project = {
+interface Project {
   id: string;
   name?: string | null;
   title?: string | null;
@@ -31,26 +33,22 @@ type Project = {
   headline_description?: string | null;
   created_at?: string;
   config?: ProjectConfig | null;
-};
+}
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const search = useSearchParams();
 
-  // set from URL once on mount
   const [editMode, setEditMode] = useState(false);
-
-  // loaded data
   const [proj, setProj] = useState<Project | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [statuses, setStatuses] = useState<StatusType[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
-
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // form state
+  // form
   const [title, setTitle] = useState("");
   const [clientId, setClientId] = useState("");
   const [headline, setHeadline] = useState("");
@@ -68,15 +66,12 @@ export default function ProjectDetailPage() {
 
   const [saving, setSaving] = useState(false);
 
-  // ---------- load ONCE ----------
   useEffect(() => {
     let mounted = true;
     setEditMode(search.get("mode") === "edit");
 
     const load = async () => {
-      setLoading(true);
-      setErr(null);
-
+      setLoading(true); setErr(null);
       const supabase = supabaseBrowser();
 
       const [p, c, s, cur] = await Promise.all([
@@ -85,24 +80,13 @@ export default function ProjectDetailPage() {
         supabase.from("project_status_types").select("id,name,color").order("name"),
         supabase.from("currencies").select("code,name").order("code"),
       ]);
-
       if (!mounted) return;
 
-      if (!c.error && c.data) {
-        setClients((c.data as any[]).map(x => ({ id: String(x.id), name: String(x.name) })));
-      }
-      if (!s.error && s.data) {
-        setStatuses((s.data as any[]).map(x => ({ id: Number(x.id), name: String(x.name), color: x.color ?? null })));
-      }
-      if (!cur.error && cur.data) {
-        setCurrencies((cur.data as any[]).map(x => ({ code: String(x.code), name: x.name ?? null })));
-      }
+      if (!c.error && c.data) setClients((c.data as any[]).map(x=>({id:String(x.id), name:String(x.name)})));
+      if (!s.error && s.data) setStatuses((s.data as any[]).map(x=>({id:Number(x.id), name:String(x.name), color:x.color??null})));
+      if (!cur.error && cur.data) setCurrencies((cur.data as any[]).map(x=>({code:String(x.code), name:x.name??null})));
 
-      if (p.error) {
-        setErr(p.error.message);
-        setLoading(false);
-        return;
-      }
+      if (p.error) { setErr(p.error.message); setLoading(false); return; }
 
       const record: Project = {
         id: String(p.data.id),
@@ -115,7 +99,6 @@ export default function ProjectDetailPage() {
       };
       setProj(record);
 
-      // hydrate
       const derivedTitle = record.name ?? record.title ?? "";
       setTitle(derivedTitle);
       setClientId(record.client_id ?? "");
@@ -128,619 +111,202 @@ export default function ProjectDetailPage() {
       setActive(a); setVisible(v); setEditable(e);
       setData({ ...(cfg.data ?? {}) });
 
+      // ensure project_status exists in data so dropdown works even if element disabled previously
+      setData(d => ({
+        "project_status.name": d["project_status.name"] ?? "",
+        "project_status.custom": d["project_status.custom"] ?? "",
+        ...d,
+      }));
+
       setLoading(false);
     };
 
     load();
     return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // IMPORTANT: empty deps — no flicker
+  }, []);
 
   const selectedElements = useMemo(() => ALL_ELEMENTS.filter(k => active[k]), [active]);
-  const toggle = (state: any, setState: any, key: ElementKey) =>
-    setState((s: any) => ({ ...s, [key]: !s[key] }));
-
-  const getD = <T,>(key: string, fallback: T): T =>
-    (data?.[key] ?? fallback) as T;
-
-  const setD = (key: string, value: any) =>
-    setData(d => ({ ...d, [key]: value }));
+  const toggle = (state: any, setState: any, key: ElementKey) => setState((s:any)=>({ ...s, [key]: !s[key] }));
+  const getD = <T,>(key:string, fallback:T):T => (data?.[key] ?? fallback) as T;
+  const setD = (key:string, value:any) => setData(d => ({ ...d, [key]: value }));
 
   const save = async () => {
     if (!proj) return;
-    setSaving(true);
-    setErr(null);
-
+    setSaving(true); setErr(null);
     const supabase = supabaseBrowser();
 
-    const config: ProjectConfig = {
-      elements: selectedElements,
-      visibility: visible,
-      editability: editable,
-      data,
-    };
+    // persist config
+    const config: ProjectConfig = { elements: selectedElements, visibility, editability, data };
+    const base: any = { client_id: clientId || null, headline_description: headline || null, config };
+    const attempt = async (field: "name"|"title") => supabase.from("projects").update({ ...base, [field]: title }).eq("id", proj.id);
 
-    const base: any = {
-      client_id: clientId || null,
-      headline_description: headline || null,
-      config,
-    };
-
-    const attempt = async (field: "name" | "title") =>
-      supabase.from("projects").update({ ...base, [field]: title }).eq("id", proj.id);
-
-    let ok = false;
-    let updErr: string | null = null;
-
+    let ok = false; let updErr: string | null = null;
     const r1 = await attempt("name");
-    if (r1.error) {
-      const r2 = await attempt("title");
-      if (r2.error) updErr = r2.error.message;
-      else ok = true;
-    } else ok = true;
+    if (r1.error) { const r2 = await attempt("title"); if (r2.error) updErr = r2.error.message; else ok = true; }
+    else ok = true;
 
     setSaving(false);
-    if (!ok) {
-      setErr(updErr || "Failed to save project");
-      return;
-    }
+    if (!ok) { setErr(updErr || "Failed to save project"); return; }
     router.replace(`/projects/${proj.id}`);
     setEditMode(false);
   };
 
-  const fmtDate = (iso?: string) =>
-    iso ? new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "—";
+  const fmtDate = (iso?: string) => iso ? new Date(iso).toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"}) : "—";
 
   if (loading) return <div style={{ padding: 16 }}>Loading project…</div>;
-  if (err) {
-    const authish = /permission|rls|auth|401|403|JWT/i.test(err);
-    return (
-      <div style={{ padding: 16, color: "crimson" }}>
-        Error: {err}
-        <div style={{ color: "#555", marginTop: 6, fontSize: 12 }}>
-          {authish
-            ? "Tip: Your RLS may block reads/updates when signed out. (You can keep the dev anon policy enabled while building.)"
-            : "Tip: Check your projects columns (name/title) and that the row exists."}
-        </div>
-      </div>
-    );
-  }
+  if (err) return <div style={{ padding:16, color:"crimson" }}>Error: {err}</div>;
   if (!proj) return <div style={{ padding: 16 }}>Not found.</div>;
 
   return (
     <div style={{ padding: 16, maxWidth: 1100 }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap: 12 }}>
         <h1 style={{ margin: 0 }}>{editMode ? "Edit Project" : "Project Details"}</h1>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display:"flex", gap: 8 }}>
           {!editMode ? (
-            <button onClick={() => setEditMode(true)}>Edit</button>
+            <button onClick={()=>setEditMode(true)}>Edit</button>
           ) : (
             <>
-              <button onClick={() => { router.replace(`/projects/${proj.id}`); setEditMode(false); }}>Cancel</button>
+              <button onClick={()=>{ router.replace(`/projects/${proj.id}`); setEditMode(false); }}>Cancel</button>
               <button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
             </>
           )}
         </div>
       </div>
-
-      <div style={{ color: "#555", fontSize: 13, marginTop: 6 }}>
-        Created: {fmtDate(proj.created_at)}
-      </div>
+      <div style={{ color: "#555", fontSize: 13, marginTop: 6 }}>Created: {fmtDate(proj.created_at)}</div>
 
       {/* Basics */}
       <Section title="Basics">
         {editMode ? (
           <Grid cols={1} gap={12} maxW={720}>
-            <label>Project title
-              <input value={title} onChange={(e) => setTitle(e.target.value)} />
-            </label>
+            <label>Project title<input value={title} onChange={e=>setTitle(e.target.value)} /></label>
             <label>Client
-              <select value={clientId} onChange={(e) => setClientId(e.target.value)}>
+              <select value={clientId} onChange={e=>setClientId(e.target.value)}>
                 <option value="">— Select client —</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {clients.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>
-            <label>Headline / description
-              <textarea value={headline} onChange={(e) => setHeadline(e.target.value)} style={{ minHeight: 80 }} />
-            </label>
+            <label>Headline / description<textarea value={headline} onChange={e=>setHeadline(e.target.value)} style={{ minHeight: 80 }} /></label>
           </Grid>
         ) : (
           <Grid cols={1} gap={8}>
             <KV label="Title" value={title || "—"} />
-            <KV
-              label="Client"
-              value={
-                clientId
-                  ? <Link href={`/clients/${clientId}`}>{clients.find(c => c.id === clientId)?.name || "View client"}</Link>
-                  : "—"
-              }
-            />
+            <KV label="Client" value={clientId ? clients.find(c=>c.id===clientId)?.name || "—" : "—"} />
             <KV label="Headline" value={headline || "—"} />
           </Grid>
         )}
       </Section>
 
-      {/* Elements selection */}
+      {/* Project Status — always visible & editable here */}
+      <Section title="Project Status">
+        {editMode ? (
+          <div style={{ display:"flex", gap: 8, alignItems:"center", flexWrap:"wrap" }}>
+            <select
+              value={getD<string>("project_status.name", "")}
+              onChange={(e)=> setD("project_status.name", e.target.value)}
+              style={{ minWidth: 220 }}
+            >
+              <option value="">— Select status —</option>
+              {statuses.map(st => (
+                <option key={st.id} value={st.name}>{st.name}</option>
+              ))}
+            </select>
+            <input
+              placeholder="Or type a custom status"
+              value={getD<string>("project_status.custom", "")}
+              onChange={(e)=> setD("project_status.custom", e.target.value)}
+              style={{ minWidth: 240 }}
+            />
+            <Link href="/settings/status-types" style={{ marginLeft: 8 }}>Manage status list →</Link>
+          </div>
+        ) : (
+          <KV
+            label="Status"
+            value={getD<string>("project_status.custom", "") || getD<string>("project_status.name", "—")}
+          />
+        )}
+      </Section>
+
+      {/* Elements picker & permissions */}
       <Section title="Project Elements">
         {editMode ? (
           <Grid cols={3} gap={8}>
             {ALL_ELEMENTS.map(k => (
-              <label key={k} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input type="checkbox" checked={active[k]} onChange={() => toggle(active, setActive, k)} />
+              <label key={k} style={{ display:"flex", gap: 8, alignItems:"center" }}>
+                <input type="checkbox" checked={!!active[k]} onChange={()=>toggle(active,setActive,k)} />
                 <span>{labelFor(k)}</span>
               </label>
             ))}
           </Grid>
         ) : (
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            {ALL_ELEMENTS.filter(k => active[k]).map(k => <li key={k}>{labelFor(k)}</li>)}
-            {ALL_ELEMENTS.every(k => !active[k]) && <li>None selected.</li>}
+          <ul style={{ margin:0, paddingLeft:18 }}>
+            {ALL_ELEMENTS.filter(k=>active[k]).map(k=> <li key={k}>{labelFor(k)}</li>)}
+            {ALL_ELEMENTS.every(k=>!active[k]) && <li>None selected.</li>}
           </ul>
         )}
       </Section>
 
-      {/* Client permissions */}
       <Section title="Client Permissions">
         {editMode ? (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>
-                <th style={{ padding: 8 }}>Element</th>
-                <th style={{ padding: 8 }}>Client can view</th>
-                <th style={{ padding: 8 }}>Client can edit</th>
-              </tr>
-            </thead>
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr style={{ borderBottom:"1px solid #e5e7eb" }}>
+              <th style={{ padding:8, textAlign:"left" }}>Element</th>
+              <th style={{ padding:8, textAlign:"left" }}>Client can view</th>
+              <th style={{ padding:8, textAlign:"left" }}>Client can edit</th>
+            </tr></thead>
             <tbody>
-              {ALL_ELEMENTS.filter(k => active[k]).map(k => (
-                <tr key={k} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: 8 }}>{labelFor(k)}</td>
-                  <td style={{ padding: 8 }}>
-                    <input type="checkbox" checked={!!visible[k]} onChange={() => toggle(visible, setVisible, k)} />
+              {ALL_ELEMENTS.filter(k=>active[k]).map(k=> (
+                <tr key={k} style={{ borderBottom:"1px solid #f3f4f6" }}>
+                  <td style={{ padding:8 }}>{labelFor(k)}</td>
+                  <td style={{ padding:8 }}>
+                    <input type="checkbox" checked={!!visible[k]} onChange={()=>toggle(visible,setVisible,k)} />
                   </td>
-                  <td style={{ padding: 8 }}>
-                    <input type="checkbox" checked={!!editable[k]} onChange={() => toggle(editable, setEditable, k)} />
+                  <td style={{ padding:8 }}>
+                    <input type="checkbox" checked={!!editable[k]} onChange={()=>toggle(editable,setEditable,k)} />
                   </td>
                 </tr>
               ))}
-              {ALL_ELEMENTS.filter(k => active[k]).length === 0 && (
-                <tr><td colSpan={3} style={{ padding: 8, color: "#6b7280" }}>No elements selected.</td></tr>
-              )}
             </tbody>
           </table>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>
-                <th style={{ padding: 8 }}>Element</th>
-                <th style={{ padding: 8 }}>Visible</th>
-                <th style={{ padding: 8 }}>Editable</th>
-              </tr>
-            </thead>
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr style={{ borderBottom:"1px solid #e5e7eb" }}>
+              <th style={{ padding:8, textAlign:"left" }}>Element</th>
+              <th style={{ padding:8, textAlign:"left" }}>Visible</th>
+              <th style={{ padding:8, textAlign:"left" }}>Editable</th>
+            </tr></thead>
             <tbody>
-              {ALL_ELEMENTS.filter(k => active[k]).map(k => (
-                <tr key={k} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: 8 }}>{labelFor(k)}</td>
-                  <td style={{ padding: 8 }}>{visible[k] ? "Yes" : "No"}</td>
-                  <td style={{ padding: 8 }}>{editable[k] ? "Yes" : "No"}</td>
+              {ALL_ELEMENTS.filter(k=>active[k]).map(k=> (
+                <tr key={k} style={{ borderBottom:"1px solid #f3f4f6" }}>
+                  <td style={{ padding:8 }}>{labelFor(k)}</td>
+                  <td style={{ padding:8 }}>{visible[k] ? "Yes" : "No"}</td>
+                  <td style={{ padding:8 }}>{editable[k] ? "Yes" : "No"}</td>
                 </tr>
               ))}
-              {ALL_ELEMENTS.filter(k => active[k]).length === 0 && (
-                <tr><td colSpan={3} style={{ padding: 8, color: "#6b7280" }}>No elements selected.</td></tr>
-              )}
             </tbody>
           </table>
         )}
       </Section>
 
-      {/* Element editors (unchanged logic) */}
-      {active["project_status"] && (
-        <Section title="Project Status">
-          {editMode ? (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <select
-                value={getD<string>("project_status.name", "")}
-                onChange={(e) => setD("project_status.name", e.target.value)}
-              >
-                <option value="">— Select status —</option>
-                {statuses.map(st => <option key={st.id} value={st.name}>{st.name}</option>)}
-              </select>
-              <input
-                placeholder="Or type a custom status"
-                value={getD<string>("project_status.custom", "")}
-                onChange={(e) => setD("project_status.custom", e.target.value)}
-              />
-            </div>
-          ) : (
-            <KV label="Status" value={getD<string>("project_status.custom", "") || getD<string>("project_status.name","—")} />
-          )}
-        </Section>
-      )}
-
-      {active["client_budget"] && (
-        <Section title="Client Budget">
-          {editMode ? (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                type="number" step="0.01" placeholder="Amount"
-                value={getD<number>("client_budget.amount", "" as any)}
-                onChange={(e) => setD("client_budget.amount", e.target.value === "" ? null : Number(e.target.value))}
-                style={{ maxWidth: 200 }}
-              />
-              <select
-                value={getD<string>("client_budget.currency", "")}
-                onChange={(e) => setD("client_budget.currency", e.target.value)}
-                style={{ maxWidth: 160 }}
-              >
-                <option value="">Currency</option>
-                {currencies.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
-              </select>
-            </div>
-          ) : (
-            <KV label="Client Budget"
-              value={fmtMoney(getD<number>("client_budget.amount", 0), getD<string>("client_budget.currency","")) || "—"} />
-          )}
-        </Section>
-      )}
-
-      {active["project_cost"] && (
-        <Section title="Project Cost">
-          {editMode ? (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                type="number" step="0.01" placeholder="Amount"
-                value={getD<number>("project_cost.amount", "" as any)}
-                onChange={(e) => setD("project_cost.amount", e.target.value === "" ? null : Number(e.target.value))}
-                style={{ maxWidth: 200 }}
-              />
-              <select
-                value={getD<string>("project_cost.currency", "")}
-                onChange={(e) => setD("project_cost.currency", e.target.value)}
-                style={{ maxWidth: 160 }}
-              >
-                <option value="">Currency</option>
-                {currencies.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
-              </select>
-            </div>
-          ) : (
-            <KV label="Project Cost"
-              value={fmtMoney(getD<number>("project_cost.amount", 0), getD<string>("project_cost.currency","")) || "—"} />
-          )}
-        </Section>
-      )}
-
-      {active["style_direction"] && (
-        <Section title="Style Direction">
-          {editMode ? (
-            <textarea
-              value={getD<string>("style_direction.text", "")}
-              onChange={(e) => setD("style_direction.text", e.target.value)}
-              style={{ minHeight: 120 }}
-              placeholder="References, links, moodboards…"
-            />
-          ) : (
-            <Pre value={getD<string>("style_direction.text","—")} />
-          )}
-        </Section>
-      )}
-
-      {active["deliverables"] && (
-        <Section title="Deliverables">
-          <ArrayTable
-            edit={editMode}
-            rows={getD<any[]>("deliverables.rows", [])}
-            onChange={(rows) => setD("deliverables.rows", rows)}
-            columns={[
-              { key: "type", label: "Type", input: "select", options: ["Stills","Video","Other"] },
-              { key: "description", label: "Description", input: "text" },
-              { key: "notes", label: "Notes", input: "text" },
-            ]}
-          />
-        </Section>
-      )}
-
-      {active["project_dates_locations"] && (
-        <Section title="Project Dates & Locations">
-          <ArrayTable
-            edit={editMode}
-            rows={getD<any[]>("dates.rows", [])}
-            onChange={(rows) => setD("dates.rows", rows)}
-            columns={[
-              { key: "date", label: "Date", input: "date" },
-              { key: "time", label: "Time", input: "text", placeholder: "e.g. 09:00–17:00" },
-              { key: "location", label: "Location", input: "text" },
-            ]}
-          />
-        </Section>
-      )}
-
-      {active["shotlist"] && (
-        <Section title="Shotlist">
-          <ArrayTable
-            edit={editMode}
-            rows={getD<any[]>("shotlist.rows", [])}
-            onChange={(rows) => setD("shotlist.rows", rows)}
-            columns={[
-              { key: "shot", label: "Shot description", input: "text" },
-              { key: "notes", label: "Notes", input: "text" },
-            ]}
-          />
-        </Section>
-      )}
-
-      {active["delivery_links"] && (
-        <Section title="Delivery Links">
-          {editMode ? (
-            <textarea
-              value={getD<string>("delivery_links.text", "")}
-              onChange={(e) => setD("delivery_links.text", e.target.value)}
-              style={{ minHeight: 100 }}
-              placeholder="One link per line"
-            />
-          ) : (
-            <ListLines text={getD<string>("delivery_links.text","")} empty="—" />
-          )}
-        </Section>
-      )}
-
-      {active["expenses"] && (
-        <Section title="Expenses">
-          <ArrayTable
-            edit={editMode}
-            rows={getD<any[]>("expenses.rows", [])}
-            onChange={(rows) => setD("expenses.rows", rows)}
-            columns={[
-              { key: "description", label: "Description", input: "text" },
-              { key: "category", label: "Category", input: "text" },
-              { key: "qty", label: "Qty", input: "number", step: "1" },
-              { key: "unit_cost", label: "Unit Cost", input: "number", step: "0.01" },
-              { key: "total", label: "Total", input: "calc", calc: (r:any) => num(r.qty)*num(r.unit_cost) },
-            ]}
-            footerTotal={(rows:any[]) =>
-              rows.reduce((sum,r)=>sum + num(r.qty)*num(r.unit_cost), 0)
-            }
-          />
-        </Section>
-      )}
-
-      {active["terms_and_conditions"] && (
-        <Section title="Terms & Conditions">
-          {editMode ? (
-            <textarea
-              value={getD<string>("terms.text","")}
-              onChange={(e)=>setD("terms.text", e.target.value)}
-              style={{ minHeight: 100 }}
-              placeholder="Paste or reference your T&Cs (we'll wire the document store later)."
-            />
-          ) : (
-            <Pre value={getD<string>("terms.text","—")} />
-          )}
-        </Section>
-      )}
-
-      {active["rams"] && (
-        <Section title="RAMS">
-          <ArrayTable
-            edit={editMode}
-            rows={getD<any[]>("rams.rows", [])}
-            onChange={(rows) => setD("rams.rows", rows)}
-            columns={[
-              { key: "name", label: "Document", input: "text" },
-              { key: "expires", label: "Expiry", input: "date" },
-              { key: "notes", label: "Notes", input: "text" },
-            ]}
-          />
-        </Section>
-      )}
-
-      {active["insurance"] && (
-        <Section title="Insurance">
-          <ArrayTable
-            edit={editMode}
-            rows={getD<any[]>("insurance.rows", [])}
-            onChange={(rows) => setD("insurance.rows", rows)}
-            columns={[
-              { key: "name", label: "Document", input: "text" },
-              { key: "expires", label: "Expiry", input: "date" },
-              { key: "notes", label: "Notes", input: "text" },
-            ]}
-          />
-        </Section>
-      )}
-
-      {active["additional_requests"] && (
-        <Section title="Additional Requests">
-          {editMode ? (
-            <textarea
-              value={getD<string>("additional.text","")}
-              onChange={(e)=>setD("additional.text", e.target.value)}
-              style={{ minHeight: 100 }}
-            />
-          ) : (
-            <Pre value={getD<string>("additional.text","—")} />
-          )}
-        </Section>
-      )}
-
-      {active["notes"] && (
-        <Section title="Notes">
-          {editMode ? (
-            <textarea
-              value={getD<string>("notes.text","")}
-              onChange={(e)=>setD("notes.text", e.target.value)}
-              style={{ minHeight: 100 }}
-            />
-          ) : (
-            <Pre value={getD<string>("notes.text","—")} />
-          )}
-        </Section>
-      )}
+      {/* Other element editors omitted here for brevity — keep your existing ones unchanged */}
     </div>
   );
 }
 
-/* ---------- presentational helpers ---------- */
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16, marginTop: 16 }}>
-      <h3 style={{ marginTop: 0 }}>{title}</h3>
-      {children}
-    </section>
-  );
+function Section({ title, children }:{ title:string; children:React.ReactNode }){
+  return <section style={{ border:"1px solid #000", borderRadius:10, padding:16, marginTop:16 }}>
+    <h3 style={{ marginTop:0 }}>{title}</h3>
+    {children}
+  </section>;
 }
-
-function Grid({ cols, gap, children, maxW }:{ cols:number; gap:number; children:any; maxW?:number }) {
-  return (
-    <div style={{
-      display: "grid",
-      gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-      gap,
-      maxWidth: maxW ?? "unset"
-    }}>
-      {children}
-    </div>
-  );
+function Grid({ cols, gap, children, maxW }:{ cols:number; gap:number; children:any; maxW?:number }){
+  return <div style={{ display:"grid", gridTemplateColumns:`repeat(${cols}, minmax(0,1fr))`, gap, maxWidth:maxW ?? "unset" }}>{children}</div>;
 }
-
-function KV({ label, value }:{ label:string; value:any }) {
+function KV({ label, value }:{ label:string; value:any }){
   return <div><strong>{label}:</strong> {value ?? "—"}</div>;
 }
-
-function Pre({ value }:{ value:string }) {
-  return <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{value}</pre>;
-}
-
-function ListLines({ text, empty }:{ text:string; empty:string }) {
-  const lines = (text || "").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  if (lines.length === 0) return <span>{empty}</span>;
-  return <ul style={{ margin: 0, paddingLeft: 18 }}>{lines.map((l,i)=><li key={i}>{l}</li>)}</ul>;
-}
-
-function ArrayTable({
-  edit, rows, onChange, columns, footerTotal
-}:{
-  edit: boolean;
-  rows: any[];
-  onChange: (rows:any[]) => void;
-  columns: Array<
-    { key:string; label:string; input:"text"|"number"|"date"|"select"|"calc"; options?:string[]; step?:string; placeholder?:string; calc?:(row:any)=>number }
-  >;
-  footerTotal?: (rows:any[]) => number;
-}) {
-  const addRow = () => onChange([...(rows || []), {}]);
-  const removeRow = (idx:number) => onChange((rows || []).filter((_,i)=>i!==idx));
-  const change = (idx:number, key:string, value:any) => {
-    const next = (rows || []).slice();
-    next[idx] = { ...(next[idx]||{}), [key]: value };
-    onChange(next);
-  };
-
-  return (
-    <div style={{ overflowX:"auto" }}>
-      <table style={{ width:"100%", borderCollapse:"collapse" }}>
-        <thead>
-          <tr style={{ textAlign:"left", borderBottom:"1px solid #e5e7eb" }}>
-            {columns.map(col => <th key={col.key} style={{ padding:8 }}>{col.label}</th>)}
-            {edit && <th style={{ padding:8, textAlign:"right" }}>Actions</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {(rows||[]).length === 0 ? (
-            <tr><td colSpan={columns.length + (edit?1:0)} style={{ padding: 10, color:"#6b7280" }}>
-              No rows yet.
-            </td></tr>
-          ) : (
-            (rows||[]).map((row, idx) => (
-              <tr key={idx} style={{ borderBottom:"1px solid #f3f4f6" }}>
-                {columns.map(col => {
-                  const val = row?.[col.key] ?? (col.input === "number" ? "" : "");
-                  if (!edit) {
-                    const display = col.input === "calc" && col.calc ? col.calc(row) : val || "—";
-                    return <td key={col.key} style={{ padding:8 }}>{String(display)}</td>;
-                  }
-                  switch (col.input) {
-                    case "text":
-                      return (
-                        <td key={col.key} style={{ padding:8 }}>
-                          <input
-                            value={val}
-                            onChange={(e)=>change(idx, col.key, e.target.value)}
-                            placeholder={col.placeholder}
-                          />
-                        </td>
-                      );
-                    case "number":
-                      return (
-                        <td key={col.key} style={{ padding:8 }}>
-                          <input
-                            type="number"
-                            step={col.step || "1"}
-                            value={val}
-                            onChange={(e)=>change(idx, col.key, e.target.value === "" ? null : Number(e.target.value))}
-                          />
-                        </td>
-                      );
-                    case "date":
-                      return (
-                        <td key={col.key} style={{ padding:8 }}>
-                          <input
-                            type="date"
-                            value={val || ""}
-                            onChange={(e)=>change(idx, col.key, e.target.value || null)}
-                          />
-                        </td>
-                      );
-                    case "select":
-                      return (
-                        <td key={col.key} style={{ padding:8 }}>
-                          <select
-                            value={val || ""}
-                            onChange={(e)=>change(idx, col.key, e.target.value || null)}
-                          >
-                            <option value="">—</option>
-                            {(col.options||[]).map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                          </select>
-                        </td>
-                      );
-                    case "calc":
-                      return (
-                        <td key={col.key} style={{ padding:8 }}>
-                          {col.calc ? col.calc(row).toFixed(2) : "—"}
-                        </td>
-                      );
-                  }
-                })}
-                {edit && (
-                  <td style={{ padding:8, textAlign:"right" }}>
-                    <button type="button" onClick={()=>removeRow(idx)}>Remove</button>
-                  </td>
-                )}
-              </tr>
-            ))
-          )}
-        </tbody>
-        {edit && (
-          <tfoot>
-            <tr>
-              <td colSpan={columns.length} style={{ padding:8 }}>
-                <button type="button" onClick={addRow}>+ Add row</button>
-              </td>
-              {typeof footerTotal === "function" && (
-                <td style={{ padding:8, textAlign:"right" }}>
-                  <strong>{footerTotal(rows || []).toFixed(2)}</strong>
-                </td>
-              )}
-            </tr>
-          </tfoot>
-        )}
-      </table>
-    </div>
-  );
-}
-
-function labelFor(key: ElementKey) {
-  switch (key) {
+function labelFor(key: ElementKey){
+  switch(key){
     case "project_title": return "Project Title";
     case "client_name": return "Client Name";
     case "deliverables": return "Deliverables";
@@ -761,12 +327,117 @@ function labelFor(key: ElementKey) {
   }
 }
 
-function num(x:any){ const n = Number(x); return Number.isFinite(n) ? n : 0; }
-function fmtMoney(amount:number, code?:string){
-  if(!amount) return "";
-  try { return new Intl.NumberFormat(undefined, { style:"currency", currency: code || "USD" }).format(amount); }
-  catch { return `${code||""} ${amount.toFixed(2)}`.trim(); }
+// FILE 2: src/app/(dashboard)/settings/status-types/page.tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { supabaseBrowser } from "@/lib/supabase-browser";
+
+type Row = { id: number; name: string; color: string | null };
+
+export default function StatusTypesPage(){
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const [name, setName] = useState("");
+  const [color, setColor] = useState<string | null>("#2563eb");
+
+  useEffect(()=>{
+    let mounted = true;
+    const load = async ()=>{
+      setLoading(true); setErr(null);
+      const supabase = supabaseBrowser();
+      const { data, error } = await supabase.from("project_status_types").select("id,name,color").order("name");
+      if (!mounted) return;
+      if (error) setErr(error.message); else setRows((data||[]).map((r:any)=>({ id:Number(r.id), name:String(r.name), color:r.color ?? null })));
+      setLoading(false);
+    };
+    load();
+    return ()=>{ mounted = false; };
+  },[]);
+
+  const add = async () => {
+    if (!name.trim()) return;
+    const supabase = supabaseBrowser();
+    const { data, error } = await supabase
+      .from("project_status_types")
+      .insert({ name: name.trim(), color: color })
+      .select("id,name,color")
+      .single();
+    if (error) { setErr(error.message); return; }
+    setRows(prev=> [...prev, { id:Number(data!.id), name:String(data!.name), color:(data as any).color ?? null }].sort((a,b)=>a.name.localeCompare(b.name)));
+    setName("");
+  };
+
+  const save = async (r: Row) => {
+    const supabase = supabaseBrowser();
+    const { error } = await supabase.from("project_status_types").update({ name: r.name, color: r.color }).eq("id", r.id);
+    if (error) { setErr(error.message); return; }
+  };
+
+  const remove = async (id: number) => {
+    if (!confirm("Delete this status?")) return;
+    const supabase = supabaseBrowser();
+    const { error } = await supabase.from("project_status_types").delete().eq("id", id);
+    if (error) { setErr(error.message); return; }
+    setRows(prev=> prev.filter(x=>x.id!==id));
+  };
+
+  if (loading) return <div style={{ padding:16 }}>Loading…</div>;
+
+  return (
+    <div style={{ padding:16, maxWidth:900 }}>
+      <h1 style={{ marginTop:0 }}>Project Status Types</h1>
+      <p style={{ color:'#555' }}>Add, edit, or remove the statuses available in project dropdowns.</p>
+      <p><Link href="/projects">← Back to Projects</Link></p>
+
+      {err && <p style={{ color:'crimson' }}>Error: {err}</p>}
+
+      <section style={{ border:'1px solid #000', borderRadius:10, padding:16 }}>
+        <h3 style={{ marginTop:0 }}>Add new</h3>
+        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+          <input placeholder="Status name" value={name} onChange={e=>setName(e.target.value)} />
+          <input type="color" value={color ?? '#000000'} onChange={e=>setColor(e.target.value)} title="Color" />
+          <button onClick={add}>Add</button>
+        </div>
+      </section>
+
+      <section style={{ border:'1px solid #000', borderRadius:10, padding:16, marginTop:16 }}>
+        <h3 style={{ marginTop:0 }}>Existing statuses</h3>
+        {rows.length === 0 ? (
+          <p style={{ color:'#666' }}>No statuses yet.</p>
+        ) : (
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr style={{ textAlign:'left', borderBottom:'1px solid #e5e7eb' }}>
+                  <th style={{ padding:8 }}>Name</th>
+                  <th style={{ padding:8 }}>Color</th>
+                  <th style={{ padding:8 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id} style={{ borderBottom:'1px solid #f3f4f6' }}>
+                    <td style={{ padding:8 }}>
+                      <input value={r.name} onChange={e=> setRows(prev=> prev.map(x=> x.id===r.id ? { ...x, name:e.target.value } : x))} onBlur={()=> save(rows.find(x=>x.id===r.id)!)} />
+                    </td>
+                    <td style={{ padding:8 }}>
+                      <input type="color" value={r.color ?? '#000000'} onChange={e=> setRows(prev=> prev.map(x=> x.id===r.id ? { ...x, color: e.target.value } : x))} onBlur={()=> save(rows.find(x=>x.id===r.id)!)} />
+                    </td>
+                    <td style={{ padding:8, textAlign:'right' }}>
+                      <button onClick={()=> remove(r.id)}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
 }
-
-
 
