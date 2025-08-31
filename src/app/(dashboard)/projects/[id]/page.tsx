@@ -1,4 +1,3 @@
-// FILE 1: src/app/(dashboard)/projects/[id]/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -109,14 +108,9 @@ export default function ProjectDetailPage() {
       const v = Object.fromEntries(ALL_ELEMENTS.map(k => [k, Boolean(cfg.visibility?.[k])])) as Record<ElementKey, boolean>;
       const e = Object.fromEntries(ALL_ELEMENTS.map(k => [k, Boolean(cfg.editability?.[k])])) as Record<ElementKey, boolean>;
       setActive(a); setVisible(v); setEditable(e);
-      setData({ ...(cfg.data ?? {}) });
 
-      // ensure project_status exists in data so dropdown works even if element disabled previously
-      setData(d => ({
-        "project_status.name": d["project_status.name"] ?? "",
-        "project_status.custom": d["project_status.custom"] ?? "",
-        ...d,
-      }));
+      // ensure status keys exist
+      setData({ ...(cfg.data ?? {}), "project_status.name": (cfg.data ?? {})["project_status.name"] ?? "", "project_status.custom": (cfg.data ?? {})["project_status.custom"] ?? "" });
 
       setLoading(false);
     };
@@ -136,8 +130,8 @@ export default function ProjectDetailPage() {
     setSaving(true); setErr(null);
     const supabase = supabaseBrowser();
 
-    // persist config
-    const config: ProjectConfig = { elements: selectedElements, visibility, editability, data };
+    // persist config (FIX: use `visible` for `visibility`)
+    const config: ProjectConfig = { elements: selectedElements, visibility: visible, editability, data };
     const base: any = { client_id: clientId || null, headline_description: headline || null, config };
     const attempt = async (field: "name"|"title") => supabase.from("projects").update({ ...base, [field]: title }).eq("id", proj.id);
 
@@ -288,7 +282,7 @@ export default function ProjectDetailPage() {
         )}
       </Section>
 
-      {/* Other element editors omitted here for brevity — keep your existing ones unchanged */}
+      {/* Keep other element editors you already have below as-is */}
     </div>
   );
 }
@@ -326,3 +320,4 @@ function labelFor(key: ElementKey){
     case "notes": return "Notes";
   }
 }
+
