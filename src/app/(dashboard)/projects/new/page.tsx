@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
@@ -13,7 +13,16 @@ const ALL_ELEMENTS = [
 type ElementKey = (typeof ALL_ELEMENTS)[number];
 type Client = { id: string; name: string };
 
+// Top-level wrapper ONLY sets up Suspense
 export default function NewProjectPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 16 }}>Loading form…</div>}>
+      <NewProjectForm />
+    </Suspense>
+  );
+}
+
+function NewProjectForm() {
   const router = useRouter();
   const search = useSearchParams();
 
@@ -39,7 +48,7 @@ export default function NewProjectPage() {
   const [err, setErr] = useState<string | null>(null);
   const [collabLink, setCollabLink] = useState<string | null>(null);
 
-  // Load clients ONCE, create Supabase client inside effect
+  // Load clients ONCE; create Supabase client inside effect
   useEffect(() => {
     let mounted = true;
     const loadClients = async () => {
@@ -50,7 +59,9 @@ export default function NewProjectPage() {
         .from("clients")
         .select("id,name")
         .order("name");
+
       if (!mounted) return;
+
       if (error) {
         setClientsErr(error.message);
         setClients([]);
@@ -66,7 +77,7 @@ export default function NewProjectPage() {
     loadClients();
     return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // IMPORTANT: empty deps → no flicker
+  }, []); // keep empty (no flicker)
 
   const selectedElements = useMemo(() => ALL_ELEMENTS.filter((k) => active[k]), [active]);
 
@@ -87,7 +98,7 @@ export default function NewProjectPage() {
         elements: selectedElements,
         visibility: visible,
         editability: editable,
-        data: {}, // start empty; editors on detail page will populate
+        data: {},
       },
     };
 
@@ -116,13 +127,16 @@ export default function NewProjectPage() {
       return;
     }
 
-    const token = cryptoRandom(24);
-    const linkUrl = window.location.origin + `/share/${token}`;
-    const { error: linkErr } = await supabase.from("project_collab_links").insert({
-      project_id: projectId,
-      token,
-    });
-    if (!linkErr) setCollabLink(linkUrl);
+    // optional: create collaboration link
+    try {
+      const token = cryptoRandom(24);
+      const linkUrl = window.location.origin + `/share/${token}`;
+      const { error: linkErr } = await supabase.from("project_collab_links").insert({
+        project_id: projectId,
+        token,
+      });
+      if (!linkErr) setCollabLink(linkUrl);
+    } catch {}
 
     setSaving(false);
     router.push(`/projects/${projectId}`);
@@ -171,10 +185,7 @@ export default function NewProjectPage() {
                   </option>
                 ))}
               </select>
-              <a
-                href="/clients/new"
-                style={{ alignSelf: "center", whiteSpace: "nowrap", marginTop: 4 }}
-              >
+              <a href="/clients/new" style={{ alignSelf: "center", whiteSpace: "nowrap", marginTop: 4 }}>
                 + New
               </a>
             </div>
@@ -201,11 +212,7 @@ export default function NewProjectPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
             {ALL_ELEMENTS.map((key) => (
               <label key={key} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={active[key]}
-                  onChange={() => toggle(active, setActive, key)}
-                />
+                <input type="checkbox" checked={active[key]} onChange={() => toggle(active, setActive, key)} />
                 <span>{labelFor(key)}</span>
               </label>
             ))}
@@ -229,18 +236,10 @@ export default function NewProjectPage() {
                   <tr key={key} style={{ borderBottom: "1px solid #f3f4f6" }}>
                     <td style={{ padding: "8px" }}>{labelFor(key)}</td>
                     <td style={{ padding: "8px" }}>
-                      <input
-                        type="checkbox"
-                        checked={visible[key]}
-                        onChange={() => toggle(visible, setVisible, key)}
-                      />
+                      <input type="checkbox" checked={visible[key]} onChange={() => toggle(visible, setVisible, key)} />
                     </td>
                     <td style={{ padding: "8px" }}>
-                      <input
-                        type="checkbox"
-                        checked={editable[key]}
-                        onChange={() => toggle(editable, setEditable, key)}
-                      />
+                      <input type="checkbox" checked={editable[key]} onChange={() => toggle(editable, setEditable, key)} />
                     </td>
                   </tr>
                 ))}
@@ -250,11 +249,7 @@ export default function NewProjectPage() {
         )}
 
         <div style={{ display: "flex", gap: 8 }}>
-          <button
-            type="submit"
-            disabled={saving}
-            style={{ padding: "10px 14px" }}
-          >
+          <button type="submit" disabled={saving} style={{ padding: "10px 14px" }}>
             {saving ? "Creating…" : "Create project"}
           </button>
         </div>
@@ -301,6 +296,7 @@ function cryptoRandom(len: number) {
   for (let i = 0; i < len; i++) out += alphabet[arr[i] % alphabet.length];
   return out;
 }
+
 
 
 
