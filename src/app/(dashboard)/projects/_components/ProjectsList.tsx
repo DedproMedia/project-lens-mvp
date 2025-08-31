@@ -28,15 +28,8 @@ export default function ProjectsList() {
       const supabase = supabaseBrowser();
 
       const [p, s] = await Promise.all([
-        supabase
-          .from("projects")
-          .select("*, client:clients(name)")
-          .order("created_at", { ascending: false })
-          .limit(200),
-        supabase
-          .from("project_status_types")
-          .select("id,name,color")
-          .order("name"),
+        supabase.from("projects").select("*, client:clients(name)").order("created_at", { ascending: false }).limit(200),
+        supabase.from("project_status_types").select("id,name,color").order("name"),
       ]);
 
       if (!mounted) return;
@@ -56,13 +49,11 @@ export default function ProjectsList() {
       }
 
       if (!s.error && s.data) {
-        setStatusTypes(
-          (s.data as any[]).map((x) => ({
-            id: Number(x.id),
-            name: String(x.name),
-            color: x.color ?? null,
-          }))
-        );
+        setStatusTypes((s.data as any[]).map((x) => ({
+          id: Number(x.id),
+          name: String(x.name),
+          color: x.color ?? null,
+        })));
       }
 
       setLoading(false);
@@ -81,66 +72,42 @@ export default function ProjectsList() {
 
   const derived = rows.map((r) => {
     const data = (r.config?.data ?? {}) as Record<string, any>;
-    const label: string =
-      (data["project_status.custom"] as string) ||
-      (data["project_status.name"] as string) ||
-      "";
-    const color =
-      (label &&
-        statusIndex.get(label.trim().toLowerCase()) &&
-        (statusIndex.get(label.trim().toLowerCase()) as string)) ||
-      null;
-
-    return {
-      ...r,
-      statusLabel: label || "—",
-      statusColor: color,
-    };
+    const label: string = (data["project_status.custom"] as string) || (data["project_status.name"] as string) || "";
+    const color = (label && statusIndex.get(label.trim().toLowerCase())) || null;
+    return { ...r, statusLabel: label || "—", statusColor: color };
   });
 
-  if (loading) return <div className="p-6 text-gray-600">Loading projects…</div>;
-  if (err) return <div className="p-6 text-red-600">Error: {err}</div>;
-  if (derived.length === 0) return <div className="p-6 text-gray-600">No projects yet.</div>;
+  if (loading) return <div className="p-4 text-gray-600">Loading projects…</div>;
+  if (err) return <div className="p-4 text-red-600">Error: {err}</div>;
+  if (derived.length === 0) return <div className="p-4 text-gray-600">No projects yet.</div>;
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse rounded-xl shadow-md">
+      <table className="w-full border-collapse rounded-lg shadow-sm text-sm">
         <thead>
-          <tr className="bg-gray-100 text-left text-sm uppercase tracking-wide">
-            <th className="px-6 py-4 font-semibold">Project</th>
-            <th className="px-6 py-4 font-semibold">Client</th>
-            <th className="px-6 py-4 font-semibold">Status</th>
-            <th className="px-6 py-4 font-semibold">Created</th>
-            <th className="px-6 py-4" />
+          <tr className="bg-gray-100 text-left text-xs uppercase tracking-wide">
+            <th className="px-4 py-2 font-semibold">Project</th>
+            <th className="px-4 py-2 font-semibold">Client</th>
+            <th className="px-4 py-2 font-semibold">Status</th>
+            <th className="px-4 py-2 font-semibold">Created</th>
+            <th className="px-4 py-2" />
           </tr>
         </thead>
         <tbody>
           {derived.map((r, i) => {
-            const tint = r.statusColor
-              ? hexToRgba(r.statusColor, 0.15)
-              : i % 2 === 0
-              ? "#fafafa"
-              : "#ffffff";
-
+            const tint = r.statusColor ? hexToRgba(r.statusColor, 0.1) : i % 2 === 0 ? "#fafafa" : "#ffffff";
             return (
-              <tr
-                key={r.id}
-                className="transition-colors"
-                style={{ background: tint }}
-              >
-                <td className="px-6 py-4 font-medium text-lg text-black">
+              <tr key={r.id} style={{ background: tint }}>
+                <td className="px-4 py-2 font-medium text-black">
                   <Link href={`/projects/${r.id}`}>{r.title}</Link>
                 </td>
-                <td className="px-6 py-4 text-gray-700">{r.client?.name || "—"}</td>
-                <td className="px-6 py-4">
+                <td className="px-4 py-2 text-gray-700">{r.client?.name || "—"}</td>
+                <td className="px-4 py-2">
                   <StatusBadge label={r.statusLabel} color={r.statusColor} />
                 </td>
-                <td className="px-6 py-4 text-gray-500 text-sm">{fmtDate(r.created_at)}</td>
-                <td className="px-6 py-4 text-right">
-                  <Link
-                    href={`/projects/${r.id}`}
-                    className="text-red-600 hover:text-red-800 font-semibold"
-                  >
+                <td className="px-4 py-2 text-gray-500 text-xs">{fmtDate(r.created_at)}</td>
+                <td className="px-4 py-2 text-right">
+                  <Link href={`/projects/${r.id}`} className="text-red-600 hover:text-red-800 font-medium text-xs">
                     Open →
                   </Link>
                 </td>
@@ -155,45 +122,6 @@ export default function ProjectsList() {
 
 function StatusBadge({ label, color }: { label: string; color: string | null }) {
   return (
-    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border text-sm font-medium bg-white shadow-sm">
-      <span
-        className="w-3 h-3 rounded-full"
-        style={{ background: color || "#9ca3af" }}
-      />
-      <span>{label || "—"}</span>
-    </span>
-  );
-}
+    <span
 
-function fmtDate(iso?: string | null) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return "—";
-  }
-}
-
-function hexToRgba(hex: string, alpha = 0.15): string | undefined {
-  if (!hex) return undefined;
-  let h = hex.trim();
-  if (h.startsWith("#")) h = h.slice(1);
-  if (h.length === 3) {
-    const r = h[0] + h[0];
-    const g = h[1] + h[1];
-    const b = h[2] + h[2];
-    return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
-  }
-  if (h.length === 6) {
-    const r = h.slice(0, 2);
-    const g = h.slice(2, 4);
-    const b = h.slice(4, 6);
-    return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
-  }
-  return undefined;
-}
 

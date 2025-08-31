@@ -1,55 +1,80 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabaseBrowser } from "../../../../lib/supabase-browser";
+import Link from "next/link";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 type Client = {
   id: string;
   name: string;
-  email: string | null;
-  phone: string | null;
-  created_at: string;
+  email?: string | null;
+  phone?: string | null;
+  created_at?: string | null;
 };
 
 export default function ClientsList() {
-  const [rows, setRows] = useState<Client[] | null>(null);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = supabaseBrowser();
-
+    let mounted = true;
     const load = async () => {
+      setLoading(true);
+      setErr(null);
+      const supabase = supabaseBrowser();
       const { data, error } = await supabase
         .from("clients")
-        .select("id,name,email,phone,created_at")
+        .select("*")
         .order("created_at", { ascending: false });
+
+      if (!mounted) return;
       if (error) {
         setErr(error.message);
+        setClients([]);
       } else {
-        setRows(data as Client[]);
+        setClients((data || []).map((c) => ({
+          id: String(c.id),
+          name: c.name ?? "Unnamed Client",
+          email: c.email ?? null,
+          phone: c.phone ?? null,
+          created_at: c.created_at ?? null,
+        })));
       }
       setLoading(false);
     };
-
     load();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  if (loading) return <p style={{ color: "#666" }}>Loading clients…</p>;
-  if (err) return <p style={{ color: "crimson" }}>Error: {err}</p>;
-  if (!rows || rows.length === 0) return <p>No clients yet.</p>;
+  if (loading) return <div className="p-4 text-gray-600">Loading clients…</div>;
+  if (err) return <div className="p-4 text-red-600">Error: {err}</div>;
+  if (clients.length === 0) return <div className="p-4 text-gray-600">No clients yet.</div>;
 
   return (
-    <ul style={{ marginTop: 12 }}>
-      {rows.map((c) => (
-        <li key={c.id} style={{ padding: "8px 0", borderBottom: "1px solid #eee" }}>
-          <a href={`/clients/${c.id}`} style={{ fontWeight: 600 }}>{c.name}</a>
-          <div style={{ fontSize: 12, color: "#666" }}>
-            {c.email || "—"} · {c.phone || "—"}
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {clients.map((c) => (
+        <div
+          key={c.id}
+          className="border border-gray-200 rounded-lg shadow-sm p-4 bg-white hover:shadow-md transition"
+        >
+          <h3 className="text-lg font-semibold text-black mb-1">{c.name}</h3>
+          <p className="text-sm text-gray-600">{c.email || "—"}</p>
+          <p className="text-sm text-gray-600">{c.phone || "—"}</p>
+          <div className="mt-3 text-right">
+            <Link
+              href={`/clients/${c.id}`}
+              className="text-red-600 hover:text-red-800 font-medium text-sm"
+            >
+              Open →
+            </Link>
           </div>
-        </li>
+        </div>
       ))}
-    </ul>
+    </div>
   );
 }
+
 
