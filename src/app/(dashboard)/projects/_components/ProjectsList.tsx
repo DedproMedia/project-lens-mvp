@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import StatusSelect from "@/app/components/StatusSelect";
 
 type ProjectRow = {
   id: string;
@@ -10,7 +11,8 @@ type ProjectRow = {
   headline_description: string | null;
   created_at: string | null;
   client: { name: string | null } | null;
-  status: { name: string | null; color: string | null } | null;
+  status: { id: string; name: string | null; color: string | null } | null;
+  status_type_id: string | null;
 };
 
 export default function ProjectsList() {
@@ -23,9 +25,9 @@ export default function ProjectsList() {
       const { data, error } = await supabase
         .from("projects")
         .select(
-          `id, title, headline_description, created_at, 
+          `id, title, headline_description, created_at, status_type_id,
            client:clients(name), 
-           status:project_status_types(name, color)`
+           status:project_status_types(id, name, color)`
         )
         .order("created_at", { ascending: false });
 
@@ -34,6 +36,18 @@ export default function ProjectsList() {
     };
     load();
   }, []);
+
+  const updateStatus = async (projectId: string, statusId: string | null) => {
+    const supabase = supabaseBrowser();
+    await supabase.from("projects").update({ status_type_id: statusId }).eq("id", projectId);
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === projectId
+          ? { ...row, status_type_id: statusId, status: row.status } // UI updates instantly
+          : row
+      )
+    );
+  };
 
   if (loading) return <p>Loading projects…</p>;
   if (rows.length === 0) return <p>No projects yet.</p>;
@@ -51,43 +65,22 @@ export default function ProjectsList() {
       <tbody>
         {rows.map((p) => {
           const bgColor = p.status?.color
-            ? `${p.status.color}33` // 20% opacity in hex
+            ? `${p.status.color}33` // 20% opacity
             : "transparent";
 
           return (
-            <tr
-              key={p.id}
-              style={{ backgroundColor: bgColor }}
-              className="hover:bg-gray-50"
-            >
+            <tr key={p.id} style={{ backgroundColor: bgColor }} className="hover:bg-gray-50">
               <td className="px-3 py-2 border border-gray-200">
-                <Link
-                  href={`/projects/${p.id}`}
-                  className="text-blue-600 hover:underline"
-                >
+                <Link href={`/projects/${p.id}`} className="text-blue-600 hover:underline">
                   {p.title || "(untitled)"}
                 </Link>
               </td>
+              <td className="px-3 py-2 border border-gray-200">{p.client?.name || "—"}</td>
               <td className="px-3 py-2 border border-gray-200">
-                {p.client?.name || "—"}
+                <StatusSelect value={p.status_type_id} onChange={(id) => updateStatus(p.id, id)} />
               </td>
               <td className="px-3 py-2 border border-gray-200">
-                {p.status ? (
-                  <span className="flex items-center gap-2">
-                    <span
-                      className="inline-block w-3 h-3 rounded-full"
-                      style={{ backgroundColor: p.status.color || "#999" }}
-                    />
-                    {p.status.name}
-                  </span>
-                ) : (
-                  "—"
-                )}
-              </td>
-              <td className="px-3 py-2 border border-gray-200">
-                {p.created_at
-                  ? new Date(p.created_at).toLocaleDateString()
-                  : "—"}
+                {p.created_at ? new Date(p.created_at).toLocaleDateString() : "—"}
               </td>
             </tr>
           );
