@@ -28,10 +28,11 @@ export default function ProjectsList() {
       const supabase = supabaseBrowser();
 
       const [p, s] = await Promise.all([
-        // Pull config so we can read status from config.data
+        // Avoid selecting a non-existent 'name' column.
+        // Pull everything and map title using name ?? title.
         supabase
           .from("projects")
-          .select("id,name,title,created_at,client:clients(name),config")
+          .select("*, client:clients(name)")
           .order("created_at", { ascending: false })
           .limit(200),
         supabase
@@ -95,7 +96,7 @@ export default function ProjectsList() {
     return {
       ...r,
       statusLabel: label || "—",
-      statusColor: color, // hex like #2563eb or null
+      statusColor: color, // hex string like #2563eb or null
     };
   });
 
@@ -118,7 +119,7 @@ export default function ProjectsList() {
         <tbody>
           {derived.map((r) => {
             const tint = r.statusColor
-              ? hexToRgba(r.statusColor, 0.2) // ~20% saturation tint
+              ? hexToRgba(r.statusColor, 0.2) // ~20% tint
               : undefined;
 
             return (
@@ -215,7 +216,5 @@ function hexToRgba(hex: string, alpha = 0.2): string | undefined {
     const b = h.slice(4, 6);
     return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
   }
-  // unsupported (e.g. 8-digit w/ alpha) — return undefined to avoid breaking the UI
   return undefined;
 }
-
