@@ -19,7 +19,7 @@ type ProjectRow = {
   id: string;
   title: string;
   created_at?: string | null;
-  client_id?: string | null;
+  client_id?: string | null | number;
 };
 
 export default function ClientDetailPage() {
@@ -39,6 +39,7 @@ export default function ClientDetailPage() {
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [unlinked, setUnlinked] = useState<ProjectRow[]>([]);
   const [linkingId, setLinkingId] = useState<string>("");
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -52,21 +53,8 @@ export default function ClientDetailPage() {
       setErr(null);
       const supabase = supabaseBrowser();
 
-      const [c, pByClient, pUnlinked] = await Promise.all([
-        supabase.from("clients").select("*").eq("id", id).single(),
-        supabase
-          .from("projects")
-          .select("id,name,title,created_at,client_id")
-          .eq("client_id", id)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("projects")
-          .select("id,name,title,created_at,client_id")
-          .is("client_id", null) // only show truly unassigned
-          .order("created_at", { ascending: false })
-          .limit(20),
-      ]);
-
+      // 1) Load client
+      const c = await supabase.from("clients").select("*").eq("id", id).single();
       if (!mounted) return;
 
       if (c.error) {
@@ -86,6 +74,30 @@ export default function ClientDetailPage() {
       };
       setClient(clientRow);
       setForm(clientRow);
+
+      // Build an OR filter that matches both string and numeric client_id
+      // If the id is numeric-like, we include client_id.eq.NUMBER as well.
+      const maybeNum = /^\d+$/.test(id) ? id : null;
+      const orParts = [ `client_id.eq.${id}` ];
+      if (maybeNum) orParts.push(`client_id.eq.${maybeNum}`);
+
+      // 2) Projects linked to this client (type-agnostic filter)
+      const pByClient = await supabase
+        .from("projects")
+        .select("id,name,title,created_at,client_id")
+        // PostgREST OR syntax: or('a.eq.X,b.eq.Y')
+        .or(orParts.join(","))
+        .order("created_at", { ascending: false });
+
+      // 3) Unassigned projects (client_id IS NULL)
+      const pUnlinked = await supabase
+        .from("projects")
+        .select("id,name,title,created_at,client_id")
+        .is("client_id", null)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (!mounted) return;
 
       if (!pByClient.error && pByClient.data) {
         setProjects(
@@ -113,9 +125,7 @@ export default function ClientDetailPage() {
     };
 
     load();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [id]);
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -129,7 +139,6 @@ export default function ClientDetailPage() {
     setErr(null);
 
     const supabase = supabaseBrowser();
-
     const payload: Record<string, any> = {
       name: form.name,
       email: form.email || null,
@@ -139,12 +148,8 @@ export default function ClientDetailPage() {
     };
 
     const { error } = await supabase.from("clients").update(payload).eq("id", client.id);
-
     setSaving(false);
-    if (error) {
-      setErr(error.message);
-      return;
-    }
+    if (error) { setErr(error.message); return; }
 
     setClient({ ...client, ...payload });
     setEdit(false);
@@ -154,17 +159,9 @@ export default function ClientDetailPage() {
     if (!linkingId || !client) return;
     setErr(null);
     const supabase = supabaseBrowser();
-    const { error } = await supabase
-      .from("projects")
-      .update({ client_id: client.id })
-      .eq("id", linkingId);
+    const { error } = await supabase.from("projects").update({ client_id: client.id }).eq("id", linkingId);
+    if (error) { setErr(error.message); return; }
 
-    if (error) {
-      setErr(error.message);
-      return;
-    }
-
-    // move the project from unlinked -> linked list locally
     const found = unlinked.find((p) => p.id === linkingId);
     if (found) {
       setProjects([{ ...found, client_id: client.id }, ...projects]);
@@ -244,11 +241,8 @@ export default function ClientDetailPage() {
       {/* Projects for this client */}
       <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16, marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>Projects for {client.name || "this client"}</h3>
-
         {projects.length === 0 ? (
-          <p style={{ color: "#666" }}>
-            No projects linked to this client yet.
-          </p>
+          <p style={{ color: "#666" }}>No projects linked to this client yet.</p>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -281,11 +275,7 @@ export default function ClientDetailPage() {
       <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16, marginTop: 16 }}>
         <h3 style={{ marginTop: 0 }}>Link an existing unassigned project</h3>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <select
-            value={linkingId}
-            onChange={(e) => setLinkingId(e.target.value)}
-            style={{ minWidth: 260 }}
-          >
+          <select value={linkingId} onChange={(e) => setLinkingId(e.target.value)} style={{ minWidth: 260 }}>
             <option value="">
               {unlinked.length === 0 ? "No unassigned projects" : "— Select a project —"}
             </option>
@@ -314,3 +304,4 @@ function KV({ label, value }: { label: string; value: any }) {
     </div>
   );
 }
+
