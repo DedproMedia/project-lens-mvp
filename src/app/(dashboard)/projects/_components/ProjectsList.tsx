@@ -28,8 +28,6 @@ export default function ProjectsList() {
       const supabase = supabaseBrowser();
 
       const [p, s] = await Promise.all([
-        // Avoid selecting a non-existent 'name' column.
-        // Pull everything and map title using name ?? title.
         supabase
           .from("projects")
           .select("*, client:clients(name)")
@@ -96,91 +94,72 @@ export default function ProjectsList() {
     return {
       ...r,
       statusLabel: label || "—",
-      statusColor: color, // hex string like #2563eb or null
+      statusColor: color,
     };
   });
 
-  if (loading) return <div style={{ padding: 16 }}>Loading projects…</div>;
-  if (err) return <div style={{ padding: 16, color: "crimson" }}>Error: {err}</div>;
-  if (derived.length === 0) return <div style={{ padding: 16 }}>No projects yet.</div>;
+  if (loading) return <div className="p-6 text-gray-600">Loading projects…</div>;
+  if (err) return <div className="p-6 text-red-600">Error: {err}</div>;
+  if (derived.length === 0) return <div className="p-6 text-gray-600">No projects yet.</div>;
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse rounded-xl shadow-md">
         <thead>
-          <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>
-            <th style={{ padding: 10 }}>Project</th>
-            <th style={{ padding: 10 }}>Client</th>
-            <th style={{ padding: 10 }}>Status</th>
-            <th style={{ padding: 10 }}>Created</th>
-            <th style={{ padding: 10 }} />
+          <tr className="bg-gray-100 text-left text-sm uppercase tracking-wide">
+            <th className="px-6 py-4 font-semibold">Project</th>
+            <th className="px-6 py-4 font-semibold">Client</th>
+            <th className="px-6 py-4 font-semibold">Status</th>
+            <th className="px-6 py-4 font-semibold">Created</th>
+            <th className="px-6 py-4" />
           </tr>
         </thead>
         <tbody>
-          {derived.map((r) => {
+          {derived.map((r, i) => {
             const tint = r.statusColor
-              ? hexToRgba(r.statusColor, 0.2) // ~20% tint
-              : undefined;
+              ? hexToRgba(r.statusColor, 0.15)
+              : i % 2 === 0
+              ? "#fafafa"
+              : "#ffffff";
 
             return (
               <tr
                 key={r.id}
-                style={{
-                  borderBottom: "1px solid #f3f4f6",
-                  background: tint,
-                  transition: "background 120ms ease",
-                }}
+                className="transition-colors"
+                style={{ background: tint }}
               >
-                <td style={{ padding: 10, fontWeight: 500 }}>
+                <td className="px-6 py-4 font-medium text-lg text-black">
                   <Link href={`/projects/${r.id}`}>{r.title}</Link>
                 </td>
-                <td style={{ padding: 10 }}>{r.client?.name || "—"}</td>
-                <td style={{ padding: 10 }}>
+                <td className="px-6 py-4 text-gray-700">{r.client?.name || "—"}</td>
+                <td className="px-6 py-4">
                   <StatusBadge label={r.statusLabel} color={r.statusColor} />
                 </td>
-                <td style={{ padding: 10 }}>{fmtDate(r.created_at)}</td>
-                <td style={{ padding: 10, textAlign: "right" }}>
-                  <Link href={`/projects/${r.id}`}>Open</Link>
+                <td className="px-6 py-4 text-gray-500 text-sm">{fmtDate(r.created_at)}</td>
+                <td className="px-6 py-4 text-right">
+                  <Link
+                    href={`/projects/${r.id}`}
+                    className="text-red-600 hover:text-red-800 font-semibold"
+                  >
+                    Open →
+                  </Link>
                 </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-      <p style={{ color: "#666", fontSize: 12, marginTop: 8 }}>
-        Status colors come from <code>Settings → Status Types</code>. Custom statuses use no color unless the custom
-        text equals a named status (case-insensitive).
-      </p>
     </div>
   );
 }
 
-/** Tiny pill showing status + color */
 function StatusBadge({ label, color }: { label: string; color: string | null }) {
-  const pillStyle: React.CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "4px 10px",
-    borderRadius: 999,
-    border: "1px solid #e5e7eb",
-    background: "#fff",
-    color: "#111",
-    fontSize: 13,
-    lineHeight: 1,
-  };
-
-  const dotStyle: React.CSSProperties = {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    background: color || "#9ca3af", // gray if none
-    boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)",
-  };
-
   return (
-    <span style={pillStyle}>
-      <span style={dotStyle} />
+    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border text-sm font-medium bg-white shadow-sm">
+      <span
+        className="w-3 h-3 rounded-full"
+        style={{ background: color || "#9ca3af" }}
+      />
       <span>{label || "—"}</span>
     </span>
   );
@@ -199,8 +178,7 @@ function fmtDate(iso?: string | null) {
   }
 }
 
-/** Convert #RRGGBB (or #RGB) to rgba(r,g,b,alpha). Falls back to undefined on bad input. */
-function hexToRgba(hex: string, alpha = 0.2): string | undefined {
+function hexToRgba(hex: string, alpha = 0.15): string | undefined {
   if (!hex) return undefined;
   let h = hex.trim();
   if (h.startsWith("#")) h = h.slice(1);
@@ -218,3 +196,4 @@ function hexToRgba(hex: string, alpha = 0.2): string | undefined {
   }
   return undefined;
 }
+

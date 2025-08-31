@@ -58,7 +58,7 @@ export default function ClientDetailPage() {
       setErr(null);
       const supabase = supabaseBrowser();
 
-      // Client
+      // Client info
       const c = await supabase.from("clients").select("*").eq("id", id).single();
       if (!mounted) return;
       if (c.error) {
@@ -78,28 +78,10 @@ export default function ClientDetailPage() {
       setClient(clientRow);
       setForm(clientRow);
 
-      // Build OR for numeric/string client_id matches
-      const maybeNum = /^\d+$/.test(id) ? id : null;
-      const orParts = [`client_id.eq.${id}`];
-      if (maybeNum) orParts.push(`client_id.eq.${maybeNum}`);
-
-      // Projects linked to client — need config for status
       const [pByClient, pUnlinked, sts] = await Promise.all([
-        supabase
-          .from("projects")
-          .select("*")
-          .or(orParts.join(","))
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("projects")
-          .select("*")
-          .is("client_id", null)
-          .order("created_at", { ascending: false })
-          .limit(20),
-        supabase
-          .from("project_status_types")
-          .select("id,name,color")
-          .order("name"),
+        supabase.from("projects").select("*").eq("client_id", id).order("created_at", { ascending: false }),
+        supabase.from("projects").select("*").is("client_id", null).order("created_at", { ascending: false }).limit(20),
+        supabase.from("project_status_types").select("id,name,color").order("name"),
       ]);
 
       if (!mounted) return;
@@ -147,64 +129,15 @@ export default function ClientDetailPage() {
     };
   }, [id]);
 
-  const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setForm((f) => ({ ...f, [name]: value }));
-  };
-
-  const save = async () => {
-    if (!client) return;
-    setSaving(true);
-    setErr(null);
-
-    const supabase = supabaseBrowser();
-    const payload: Record<string, any> = {
-      name: form.name,
-      email: form.email || null,
-      phone: form.phone || null,
-      address: form.address || null,
-      notes: form.notes || null,
-    };
-
-    const { error } = await supabase.from("clients").update(payload).eq("id", client.id);
-    setSaving(false);
-    if (error) {
-      setErr(error.message);
-      return;
-    }
-    setClient({ ...client, ...payload });
-    setEdit(false);
-  };
-
-  const linkProject = async () => {
-    if (!linkingId || !client) return;
-    setErr(null);
-    const supabase = supabaseBrowser();
-    const { error } = await supabase.from("projects").update({ client_id: client.id }).eq("id", linkingId);
-    if (error) {
-      setErr(error.message);
-      return;
-    }
-
-    const found = unlinked.find((p) => p.id === linkingId);
-    if (found) {
-      setProjects([{ ...found, client_id: client.id }, ...projects]);
-      setUnlinked(unlinked.filter((p) => p.id !== linkingId));
-      setLinkingId("");
-    }
-  };
-
   const fmtDate = (iso?: string | null) =>
     iso ? new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "—";
 
-  // Build a map of status name -> color (case-insensitive)
   const statusIndex = useMemo(() => {
     const idx = new Map<string, string | null>();
     statusTypes.forEach((st) => idx.set(st.name.toLowerCase(), st.color));
     return idx;
   }, [statusTypes]);
 
-  // Derive label & color from each project's config.data
   const derivedProjects = projects.map((r) => {
     const data = (r.config?.data ?? {}) as Record<string, any>;
     const label: string =
@@ -220,201 +153,89 @@ export default function ClientDetailPage() {
     return {
       ...r,
       statusLabel: label || "—",
-      statusColor: color, // hex like #2563eb or null
+      statusColor: color,
     };
   });
 
-  if (loading) return <div style={{ padding: 16 }}>Loading client…</div>;
-  if (err) {
-    const authish = /permission|rls|auth|401|403|JWT/i.test(err);
-    return (
-      <div style={{ padding: 16, color: "crimson" }}>
-        Error: {err}
-        <div style={{ color: "#555", marginTop: 6, fontSize: 12 }}>
-          {authish
-            ? "Tip: RLS might be blocking this action while signed out. Keep the dev anon policy on while you build."
-            : "Tip: Verify the row exists and column names match."}
-        </div>
-      </div>
-    );
-  }
-  if (!client) return <div style={{ padding: 16 }}>Not found.</div>;
+  if (loading) return <div className="p-6 text-gray-600">Loading client…</div>;
+  if (err) return <div className="p-6 text-red-600">Error: {err}</div>;
+  if (!client) return <div className="p-6">Not found.</div>;
 
   return (
-    <div style={{ padding: 16, maxWidth: 960 }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <h1 style={{ margin: 0 }}>{edit ? "Edit Client" : "Client Details"}</h1>
-        <div style={{ display: "flex", gap: 8 }}>
-          {!edit ? (
-            <>
-              <Link href="/clients">Back to Clients</Link>
-              <Link href={`/projects/new?client_id=${client.id}`}>+ New Project</Link>
-              <button onClick={() => setEdit(true)}>Edit</button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => {
-                  setEdit(false);
-                  setForm(client);
-                }}
-              >
-                Cancel
-              </button>
-              <button onClick={save} disabled={saving}>
-                {saving ? "Saving…" : "Save"}
-              </button>
-            </>
-          )}
-        </div>
+    <div className="p-8 max-w-5xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">{client.name}</h1>
+        <Link
+          href={`/projects/new?client_id=${client.id}`}
+          className="bg-red-600 hover:bg-red-800 text-white px-4 py-2 rounded-lg font-semibold"
+        >
+          + New Project
+        </Link>
       </div>
 
-      {/* Meta */}
-      <div style={{ color: "#555", fontSize: 13, marginTop: 6 }}>Created: {fmtDate(client.created_at)}</div>
-
-      {/* Client info */}
-      {!edit ? (
-        <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16, marginTop: 16 }}>
-          <div style={{ display: "grid", gap: 8 }}>
-            <KV label="Name" value={client.name || "—"} />
-            <KV label="Email" value={client.email || "—"} />
-            <KV label="Phone" value={client.phone || "—"} />
-            <KV label="Address" value={client.address || "—"} />
-            <KV label="Notes" value={client.notes || "—"} />
-          </div>
-        </section>
-      ) : (
-        <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16, marginTop: 16 }}>
-          <div style={{ display: "grid", gap: 12 }}>
-            <label>
-              Name<input name="name" value={form.name} onChange={onChange} required />
-            </label>
-            <label>
-              Email<input name="email" value={form.email ?? ""} onChange={onChange} />
-            </label>
-            <label>
-              Phone<input name="phone" value={form.phone ?? ""} onChange={onChange} />
-            </label>
-            <label>
-              Address<input name="address" value={form.address ?? ""} onChange={onChange} />
-            </label>
-            <label>
-              Notes<textarea name="notes" value={form.notes ?? ""} onChange={onChange} style={{ minHeight: 100 }} />
-            </label>
-          </div>
-        </section>
-      )}
-
-      {/* Projects for this client (now shows Status pill + row tint) */}
-      <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16, marginTop: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Projects for {client.name || "this client"}</h3>
+      {/* Projects Table */}
+      <section className="mt-10">
+        <h2 className="text-xl font-semibold mb-4">Projects</h2>
         {derivedProjects.length === 0 ? (
-          <p style={{ color: "#666" }}>No projects linked to this client yet.</p>
+          <p className="text-gray-600">No projects linked to this client yet.</p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse rounded-xl shadow-md">
               <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>
-                  <th style={{ padding: 8 }}>Project</th>
-                  <th style={{ padding: 8 }}>Status</th>
-                  <th style={{ padding: 8 }}>Created</th>
-                  <th style={{ padding: 8 }} />
+                <tr className="bg-gray-100 text-left text-sm uppercase tracking-wide">
+                  <th className="px-6 py-4 font-semibold">Project</th>
+                  <th className="px-6 py-4 font-semibold">Status</th>
+                  <th className="px-6 py-4 font-semibold">Created</th>
+                  <th className="px-6 py-4" />
                 </tr>
               </thead>
               <tbody>
-                {derivedProjects.map((p) => {
-                  const tint = p.statusColor ? hexToRgba(p.statusColor, 0.2) : undefined;
+                {derivedProjects.map((p, i) => {
+                  const tint = p.statusColor
+                    ? hexToRgba(p.statusColor, 0.15)
+                    : i % 2 === 0
+                    ? "#fafafa"
+                    : "#ffffff";
+
                   return (
-                    <tr key={p.id} style={{ borderBottom: "1px solid #f3f4f6", background: tint }}>
-                      <td style={{ padding: 8 }}>
+                    <tr key={p.id} style={{ background: tint }}>
+                      <td className="px-6 py-4 font-medium text-lg text-black">
                         <Link href={`/projects/${p.id}`}>{p.title}</Link>
                       </td>
-                      <td style={{ padding: 8 }}>
+                      <td className="px-6 py-4">
                         <StatusBadge label={p.statusLabel} color={p.statusColor} />
                       </td>
-                      <td style={{ padding: 8 }}>{fmtDate(p.created_at)}</td>
-                      <td style={{ padding: 8, textAlign: "right" }}>
-                        <Link href={`/projects/${p.id}`}>Open</Link>
+                      <td className="px-6 py-4 text-gray-500 text-sm">{fmtDate(p.created_at)}</td>
+                      <td className="px-6 py-4 text-right">
+                        <Link
+                          href={`/projects/${p.id}`}
+                          className="text-red-600 hover:text-red-800 font-semibold"
+                        >
+                          Open →
+                        </Link>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-            <p style={{ color: "#666", fontSize: 12, marginTop: 8 }}>
-              Status colors come from <code>Settings → Status Types</code>. Custom statuses use no color unless the custom
-              text equals a named status (case-insensitive).
-            </p>
           </div>
         )}
       </section>
-
-      {/* Link existing projects to this client */}
-      <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16, marginTop: 16 }}>
-        <h3 style={{ marginTop: 0 }}>Link an existing unassigned project</h3>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <select value={linkingId} onChange={(e) => setLinkingId(e.target.value)} style={{ minWidth: 260 }}>
-            <option value="">{unlinked.length === 0 ? "No unassigned projects" : "— Select a project —"}</option>
-            {unlinked.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title} ({fmtDate(p.created_at)})
-              </option>
-            ))}
-          </select>
-          <button onClick={linkProject} disabled={!linkingId}>
-            Link to {client.name || "client"}
-          </button>
-        </div>
-        <p style={{ color: "#666", fontSize: 12, marginTop: 8 }}>
-          Only projects with <code>client_id = NULL</code> appear here. New projects created from this client are linked automatically.
-        </p>
-      </section>
     </div>
   );
 }
 
-function KV({ label, value }: { label: string; value: any }) {
-  return (
-    <div>
-      <strong>{label}:</strong> {value ?? "—"}
-    </div>
-  );
-}
-
-/** Tiny pill showing status + color */
 function StatusBadge({ label, color }: { label: string; color: string | null }) {
-  const pillStyle: React.CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "4px 10px",
-    borderRadius: 999,
-    border: "1px solid #e5e7eb",
-    background: "#fff",
-    color: "#111",
-    fontSize: 13,
-    lineHeight: 1,
-  };
-
-  const dotStyle: React.CSSProperties = {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    background: color || "#9ca3af", // gray if none
-    boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)",
-  };
-
   return (
-    <span style={pillStyle}>
-      <span style={dotStyle} />
+    <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border text-sm font-medium bg-white shadow-sm">
+      <span className="w-3 h-3 rounded-full" style={{ background: color || "#9ca3af" }} />
       <span>{label || "—"}</span>
     </span>
   );
 }
 
-/** Convert #RRGGBB (or #RGB) to rgba(r,g,b,alpha). */
-function hexToRgba(hex: string, alpha = 0.2): string | undefined {
+function hexToRgba(hex: string, alpha = 0.15): string | undefined {
   if (!hex) return undefined;
   let h = hex.trim();
   if (h.startsWith("#")) h = h.slice(1);
@@ -432,3 +253,4 @@ function hexToRgba(hex: string, alpha = 0.2): string | undefined {
   }
   return undefined;
 }
+

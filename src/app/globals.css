@@ -4,44 +4,64 @@
 
 html, body {
   height: 100%;
-  background: #f9fafb; /* softer than pure white */
-  color: #111;
-  font-family: Inter, system-ui, sans-serif;
+  background: #ffffff; /* pure white canvas */
+  color: #111111;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-table {
+/* Headings */
+h1, h2, h3 {
+  font-weight: 700;
+  color: #000000;
+}
+
+/* Buttons */
+button {
+  background: #e60023; /* Adobe-style red accent */
+  color: #fff;
+  padding: 10px 16px;
   border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
-
-th {
-  background: #f3f4f6;
   font-weight: 600;
+  transition: background 0.2s ease;
+}
+button:hover {
+  background: #c2001a;
 }
 
+/* Inputs */
+input, textarea, select {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 10px;
+  background: #f9f9f9;
+  color: #111;
+  width: 100%;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: #e60023;
+  outline: none;
+}
+
+/* Tables as clean "cards" */
+table {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+th {
+  background: #f3f3f3;
+  font-weight: 700;
+  padding: 12px;
+  color: #333;
+}
+td {
+  padding: 12px;
+}
 tr:nth-child(even) {
   background: #fafafa;
 }
 
-input, textarea, select {
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 8px;
-  background: #fff;
-  width: 100%;
-}
-
-button {
-  background: #2563eb; /* Tailwind blue-600 */
-  color: white;
-  padding: 8px 14px;
-  border-radius: 6px;
-  font-weight: 500;
-}
-button:hover {
-  background: #1e40af; /* darken on hover */
-}
 
 
 
