@@ -2,42 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base theme */
 html, body {
   height: 100%;
-  background: #ffffff; /* white background */
-  color: #111111;      /* black text everywhere */
+  background: #f9fafb; /* softer than pure white */
+  color: #111;
+  font-family: Inter, system-ui, sans-serif;
 }
 
-/* ---- Project Lens: clean light theme for all forms ---- */
+table {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
 
-/* Inputs, textareas, selects, and buttons (applied globally) */
-input,
-textarea,
-select,
-button {
-  color: #111111;           /* black text */
-  background: #f9f9f9;      /* slightly off-white background */
-  border: 1px solid #000000;/* black border */
+th {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+tr:nth-child(even) {
+  background: #fafafa;
+}
+
+input, textarea, select {
+  border: 1px solid #ddd;
   border-radius: 6px;
-  caret-color: #111111;
-  outline: none;
   padding: 8px;
+  background: #fff;
+  width: 100%;
 }
 
-/* Placeholder styling */
-input::placeholder,
-textarea::placeholder {
-  color: #666666; /* muted gray placeholder */
+button {
+  background: #2563eb; /* Tailwind blue-600 */
+  color: white;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+button:hover {
+  background: #1e40af; /* darken on hover */
 }
 
-/* Labels and headings stay black */
-label,
-h1,
-h2,
-h3 {
-  color: #111111;
-}
 
 
 
