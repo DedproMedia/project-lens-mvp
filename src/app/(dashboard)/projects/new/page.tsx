@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const ALL_ELEMENTS = [
@@ -15,6 +15,7 @@ type Client = { id: string; name: string };
 
 export default function NewProjectPage() {
   const router = useRouter();
+  const search = useSearchParams();
 
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
@@ -38,7 +39,7 @@ export default function NewProjectPage() {
   const [err, setErr] = useState<string | null>(null);
   const [collabLink, setCollabLink] = useState<string | null>(null);
 
-  // Load clients ONCE, and create the Supabase client inside the effect
+  // Load clients ONCE, create Supabase client inside effect
   useEffect(() => {
     let mounted = true;
     const loadClients = async () => {
@@ -57,9 +58,14 @@ export default function NewProjectPage() {
         setClients((data || []).map((c: any) => ({ id: String(c.id), name: String(c.name) })));
       }
       setLoadingClients(false);
+
+      // Preselect from ?client_id=...
+      const preset = search.get("client_id");
+      if (preset) setClientId(preset);
     };
     loadClients();
     return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // IMPORTANT: empty deps → no flicker
 
   const selectedElements = useMemo(() => ALL_ELEMENTS.filter((k) => active[k]), [active]);
@@ -81,6 +87,7 @@ export default function NewProjectPage() {
         elements: selectedElements,
         visibility: visible,
         editability: editable,
+        data: {}, // start empty; editors on detail page will populate
       },
     };
 
@@ -118,7 +125,7 @@ export default function NewProjectPage() {
     if (!linkErr) setCollabLink(linkUrl);
 
     setSaving(false);
-    router.push(`/projects`);
+    router.push(`/projects/${projectId}`);
   };
 
   const clientPlaceholder =
@@ -243,7 +250,11 @@ export default function NewProjectPage() {
         )}
 
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="submit" disabled={saving} style={{ padding: "10px 14px" }}>
+          <button
+            type="submit"
+            disabled={saving}
+            style={{ padding: "10px 14px" }}
+          >
             {saving ? "Creating…" : "Create project"}
           </button>
         </div>

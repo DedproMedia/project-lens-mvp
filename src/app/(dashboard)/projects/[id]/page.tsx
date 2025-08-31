@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
@@ -132,7 +133,7 @@ export default function ProjectDetailPage() {
 
     load();
     return () => { mounted = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // IMPORTANT: empty deps — no flicker
 
   const selectedElements = useMemo(() => ALL_ELEMENTS.filter(k => active[k]), [active]);
@@ -247,7 +248,14 @@ export default function ProjectDetailPage() {
         ) : (
           <Grid cols={1} gap={8}>
             <KV label="Title" value={title || "—"} />
-            <KV label="Client" value={clients.find(c => c.id === clientId)?.name || "—"} />
+            <KV
+              label="Client"
+              value={
+                clientId
+                  ? <Link href={`/clients/${clientId}`}>{clients.find(c => c.id === clientId)?.name || "View client"}</Link>
+                  : "—"
+              }
+            />
             <KV label="Headline" value={headline || "—"} />
           </Grid>
         )}
@@ -325,7 +333,7 @@ export default function ProjectDetailPage() {
         )}
       </Section>
 
-      {/* Element editors */}
+      {/* Element editors (unchanged logic) */}
       {active["project_status"] && (
         <Section title="Project Status">
           {editMode ? (
@@ -759,5 +767,6 @@ function fmtMoney(amount:number, code?:string){
   try { return new Intl.NumberFormat(undefined, { style:"currency", currency: code || "USD" }).format(amount); }
   catch { return `${code||""} ${amount.toFixed(2)}`.trim(); }
 }
+
 
 
