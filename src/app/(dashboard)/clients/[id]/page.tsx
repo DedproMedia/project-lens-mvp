@@ -19,7 +19,7 @@ type ProjectRow = {
   id: string;
   title: string;
   created_at?: string | null;
-  client_id?: string | null | number;
+  client_id?: string | number | null;
 };
 
 export default function ClientDetailPage() {
@@ -75,24 +75,21 @@ export default function ClientDetailPage() {
       setClient(clientRow);
       setForm(clientRow);
 
-      // Build an OR filter that matches both string and numeric client_id
-      // If the id is numeric-like, we include client_id.eq.NUMBER as well.
+      // 2) Projects linked to this client (try string and numeric matches)
       const maybeNum = /^\d+$/.test(id) ? id : null;
-      const orParts = [ `client_id.eq.${id}` ];
+      const orParts = [`client_id.eq.${id}`];
       if (maybeNum) orParts.push(`client_id.eq.${maybeNum}`);
 
-      // 2) Projects linked to this client (type-agnostic filter)
       const pByClient = await supabase
         .from("projects")
-        .select("id,name,title,created_at,client_id")
-        // PostgREST OR syntax: or('a.eq.X,b.eq.Y')
+        .select("*") // <= don't assume columns; map title below
         .or(orParts.join(","))
         .order("created_at", { ascending: false });
 
-      // 3) Unassigned projects (client_id IS NULL)
+      // 3) Unassigned projects
       const pUnlinked = await supabase
         .from("projects")
-        .select("id,name,title,created_at,client_id")
+        .select("*")
         .is("client_id", null)
         .order("created_at", { ascending: false })
         .limit(20);
@@ -103,9 +100,9 @@ export default function ClientDetailPage() {
         setProjects(
           (pByClient.data as any[]).map((r) => ({
             id: String(r.id),
-            title: String(r.name ?? r.title ?? "Untitled"),
-            created_at: r.created_at ?? null,
-            client_id: r.client_id ?? null,
+            title: String((r as any).name ?? (r as any).title ?? "Untitled"),
+            created_at: (r as any).created_at ?? null,
+            client_id: (r as any).client_id ?? null,
           }))
         );
       }
@@ -114,9 +111,9 @@ export default function ClientDetailPage() {
         setUnlinked(
           (pUnlinked.data as any[]).map((r) => ({
             id: String(r.id),
-            title: String(r.name ?? r.title ?? "Untitled"),
-            created_at: r.created_at ?? null,
-            client_id: r.client_id ?? null,
+            title: String((r as any).name ?? (r as any).title ?? "Untitled"),
+            created_at: (r as any).created_at ?? null,
+            client_id: (r as any).client_id ?? null,
           }))
         );
       }
@@ -304,4 +301,3 @@ function KV({ label, value }: { label: string; value: any }) {
     </div>
   );
 }
-
