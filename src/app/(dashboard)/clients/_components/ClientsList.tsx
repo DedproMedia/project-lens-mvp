@@ -33,13 +33,15 @@ export default function ClientsList() {
         setErr(error.message);
         setClients([]);
       } else {
-        setClients((data || []).map((c) => ({
-          id: String(c.id),
-          name: c.name ?? "Unnamed Client",
-          email: c.email ?? null,
-          phone: c.phone ?? null,
-          created_at: c.created_at ?? null,
-        })));
+        setClients(
+          (data || []).map((c) => ({
+            id: String(c.id),
+            name: c.name ?? "Unnamed Client",
+            email: c.email ?? null,
+            phone: c.phone ?? null,
+            created_at: c.created_at ?? null,
+          }))
+        );
       }
       setLoading(false);
     };
@@ -49,24 +51,24 @@ export default function ClientsList() {
     };
   }, []);
 
-  if (loading) return <div className="p-4 text-gray-600">Loading clients…</div>;
-  if (err) return <div className="p-4 text-red-600">Error: {err}</div>;
-  if (clients.length === 0) return <div className="p-4 text-gray-600">No clients yet.</div>;
+  if (loading) return <div className="p-3 text-gray-600 text-sm">Loading clients…</div>;
+  if (err) return <div className="p-3 text-red-600 text-sm">Error: {err}</div>;
+  if (clients.length === 0) return <div className="p-3 text-gray-600 text-sm">No clients yet.</div>;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {clients.map((c) => (
         <div
           key={c.id}
-          className="border border-gray-200 rounded-lg shadow-sm p-4 bg-white hover:shadow-md transition"
+          className="border border-gray-200 rounded-md shadow-sm p-3 bg-white hover:shadow transition"
         >
-          <h3 className="text-lg font-semibold text-black mb-1">{c.name}</h3>
-          <p className="text-sm text-gray-600">{c.email || "—"}</p>
-          <p className="text-sm text-gray-600">{c.phone || "—"}</p>
-          <div className="mt-3 text-right">
+          <h3 className="text-sm font-semibold text-black mb-1">{c.name}</h3>
+          <p className="text-xs text-gray-600">{c.email || "—"}</p>
+          <p className="text-xs text-gray-600">{c.phone || "—"}</p>
+          <div className="mt-2 text-right">
             <Link
               href={`/clients/${c.id}`}
-              className="text-red-600 hover:text-red-800 font-medium text-sm"
+              className="text-red-600 hover:text-red-800 font-medium text-xs"
             >
               Open →
             </Link>
@@ -76,5 +78,4 @@ export default function ClientsList() {
     </div>
   );
 }
-
 
