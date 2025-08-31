@@ -1,302 +1,136 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-const ALL_ELEMENTS = [
-  "project_title","client_name","deliverables","project_dates_locations","project_status",
-  "headline_description","client_budget","project_cost","style_direction","shotlist",
-  "delivery_links","expenses","terms_and_conditions","rams","insurance","additional_requests","notes",
-] as const;
-
-type ElementKey = (typeof ALL_ELEMENTS)[number];
 type Client = { id: string; name: string };
 
-// Top-level wrapper ONLY sets up Suspense
 export default function NewProjectPage() {
-  return (
-    <Suspense fallback={<div style={{ padding: 16 }}>Loading form…</div>}>
-      <NewProjectForm />
-    </Suspense>
-  );
-}
-
-function NewProjectForm() {
-  const router = useRouter();
-  const search = useSearchParams();
-
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loadingClients, setLoadingClients] = useState(true);
-  const [clientsErr, setClientsErr] = useState<string | null>(null);
-
   const [title, setTitle] = useState("");
-  const [clientId, setClientId] = useState("");
   const [headline, setHeadline] = useState("");
-
-  const [active, setActive] = useState<Record<ElementKey, boolean>>(
-    Object.fromEntries(ALL_ELEMENTS.map((k) => [k, false])) as Record<ElementKey, boolean>
-  );
-  const [visible, setVisible] = useState<Record<ElementKey, boolean>>(
-    Object.fromEntries(ALL_ELEMENTS.map((k) => [k, false])) as Record<ElementKey, boolean>
-  );
-  const [editable, setEditable] = useState<Record<ElementKey, boolean>>(
-    Object.fromEntries(ALL_ELEMENTS.map((k) => [k, false])) as Record<ElementKey, boolean>
-  );
-
+  const [clientId, setClientId] = useState<string | null>(null);
+  const [clients, setClients] = useState<Client[]>([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [collabLink, setCollabLink] = useState<string | null>(null);
 
-  // Load clients ONCE; create Supabase client inside effect
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const preselectedClient = searchParams.get("client_id");
+
   useEffect(() => {
     let mounted = true;
-    const loadClients = async () => {
-      setLoadingClients(true);
-      setClientsErr(null);
+    const load = async () => {
       const supabase = supabaseBrowser();
-      const { data, error } = await supabase
-        .from("clients")
-        .select("id,name")
-        .order("name");
+      const { data, error } = await supabase.from("clients").select("id,name").order("name");
 
       if (!mounted) return;
-
-      if (error) {
-        setClientsErr(error.message);
-        setClients([]);
-      } else {
-        setClients((data || []).map((c: any) => ({ id: String(c.id), name: String(c.name) })));
+      if (!error && data) {
+        setClients(data.map((c) => ({ id: String(c.id), name: c.name })));
+        if (preselectedClient) setClientId(preselectedClient);
       }
-      setLoadingClients(false);
-
-      // Preselect from ?client_id=...
-      const preset = search.get("client_id");
-      if (preset) setClientId(preset);
     };
-    loadClients();
-    return () => { mounted = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // keep empty (no flicker)
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [preselectedClient]);
 
-  const selectedElements = useMemo(() => ALL_ELEMENTS.filter((k) => active[k]), [active]);
-
-  const toggle = (state: any, setState: any, key: ElementKey) =>
-    setState((s: any) => ({ ...s, [key]: !s[key] }));
-
-  const onSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErr(null);
     setSaving(true);
+    setErr(null);
 
     const supabase = supabaseBrowser();
-
-    const insertPayload: Record<string, any> = {
-      headline_description: headline || null,
-      client_id: clientId || null,
-      config: {
-        elements: selectedElements,
-        visibility: visible,
-        editability: editable,
-        data: {},
+    const { error } = await supabase.from("projects").insert([
+      {
+        name: title,
+        title,
+        headline_description: headline,
+        client_id: clientId,
+        config: { elements: {}, visibility: {}, editability: {}, data: {} },
       },
-    };
+    ]);
 
-    const attempt = async (field: "name" | "title") => {
-      const payload = { ...insertPayload, [field]: title };
-      return supabase.from("projects").insert(payload).select("id").single();
-    };
-
-    let projectId: string | null = null;
-    let insertErr: string | null = null;
-
-    {
-      const { data, error } = await attempt("name");
-      if (error) {
-        const r2 = await attempt("title");
-        if (r2.error) insertErr = r2.error.message;
-        else projectId = String(r2.data.id);
-      } else {
-        projectId = String(data.id);
-      }
-    }
-
-    if (!projectId) {
+    if (error) {
+      setErr(error.message);
       setSaving(false);
-      setErr(insertErr || "Failed to create project");
       return;
     }
 
-    // optional: create collaboration link
-    try {
-      const token = cryptoRandom(24);
-      const linkUrl = window.location.origin + `/share/${token}`;
-      const { error: linkErr } = await supabase.from("project_collab_links").insert({
-        project_id: projectId,
-        token,
-      });
-      if (!linkErr) setCollabLink(linkUrl);
-    } catch {}
-
-    setSaving(false);
-    router.push(`/projects/${projectId}`);
+    router.push("/projects");
   };
 
-  const clientPlaceholder =
-    loadingClients
-      ? "Loading clients…"
-      : clients.length === 0
-      ? "No clients yet — add one"
-      : "— Select client —";
-
   return (
-    <div style={{ padding: 16, maxWidth: 900 }}>
-      <h1 style={{ marginTop: 0 }}>New Project</h1>
+    <div className="max-w-2xl mx-auto p-6">
+      <h1 className="text-xl font-semibold mb-4">New Project</h1>
 
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 16 }}>
-        {/* Basics */}
-        <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16 }}>
-          <h3 style={{ margin: "0 0 8px" }}>Basics</h3>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {err && <p className="text-sm text-red-600">{err}</p>}
 
-          <label style={{ display: "block", marginBottom: 8 }}>
-            Project title
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              style={{ display: "block", width: "100%", marginTop: 4 }}
-            />
-          </label>
-
-          <label style={{ display: "block", marginBottom: 8 }}>
-            Client
-            <div style={{ display: "flex", gap: 8 }}>
-              <select
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                required
-                disabled={loadingClients}
-                style={{ display: "block", width: "100%", marginTop: 4 }}
-              >
-                <option value="">{clientPlaceholder}</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-              <a href="/clients/new" style={{ alignSelf: "center", whiteSpace: "nowrap", marginTop: 4 }}>
-                + New
-              </a>
-            </div>
-            {clientsErr && (
-              <div style={{ color: "crimson", marginTop: 6, fontSize: 12 }}>
-                Failed to load clients: {clientsErr}
-              </div>
-            )}
-          </label>
-
-          <label style={{ display: "block" }}>
-            Headline / description
-            <textarea
-              value={headline}
-              onChange={(e) => setHeadline(e.target.value)}
-              style={{ display: "block", width: "100%", marginTop: 4, minHeight: 80 }}
-            />
-          </label>
-        </section>
-
-        {/* Elements */}
-        <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16 }}>
-          <h3 style={{ margin: "0 0 8px" }}>Project Elements</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-            {ALL_ELEMENTS.map((key) => (
-              <label key={key} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input type="checkbox" checked={active[key]} onChange={() => toggle(active, setActive, key)} />
-                <span>{labelFor(key)}</span>
-              </label>
-            ))}
-          </div>
-        </section>
-
-        {/* Permissions */}
-        {selectedElements.length > 0 && (
-          <section style={{ border: "1px solid #000", borderRadius: 10, padding: 16 }}>
-            <h3 style={{ margin: "0 0 8px" }}>Client Permissions</h3>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>
-                  <th style={{ padding: "8px" }}>Element</th>
-                  <th style={{ padding: "8px" }}>Client can view</th>
-                  <th style={{ padding: "8px" }}>Client can edit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedElements.map((key) => (
-                  <tr key={key} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "8px" }}>{labelFor(key)}</td>
-                    <td style={{ padding: "8px" }}>
-                      <input type="checkbox" checked={visible[key]} onChange={() => toggle(visible, setVisible, key)} />
-                    </td>
-                    <td style={{ padding: "8px" }}>
-                      <input type="checkbox" checked={editable[key]} onChange={() => toggle(editable, setEditable, key)} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        )}
-
-        <div style={{ display: "flex", gap: 8 }}>
-          <button type="submit" disabled={saving} style={{ padding: "10px 14px" }}>
-            {saving ? "Creating…" : "Create project"}
-          </button>
+        {/* Project Title */}
+        <div>
+          <label className="block text-sm font-medium mb-1 text-gray-800">Project Title</label>
+          <input
+            type="text"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-red-500"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+          />
         </div>
 
-        {err && <p style={{ color: "crimson" }}>Error: {err}</p>}
-        {collabLink && (
-          <p style={{ fontSize: 13 }}>
-            Collaboration link: <code>{collabLink}</code>
+        {/* Headline Description */}
+        <div>
+          <label className="block text-sm font-medium mb-1 text-gray-800">Headline Description</label>
+          <textarea
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-red-500"
+            rows={3}
+            value={headline}
+            onChange={(e) => setHeadline(e.target.value)}
+          />
+        </div>
+
+        {/* Client */}
+        <div>
+          <label className="block text-sm font-medium mb-1 text-gray-800">Client</label>
+          <select
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-red-500"
+            value={clientId || ""}
+            onChange={(e) => setClientId(e.target.value || null)}
+            required
+          >
+            <option value="">Select client…</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-gray-500">
+            Need a new client? <a href="/clients/new" className="text-red-600 hover:underline">+ Add one</a>
           </p>
-        )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-end gap-3 pt-4">
+          <button
+            type="button"
+            onClick={() => router.push("/projects")}
+            className="px-4 py-2 rounded-md border text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-4 py-2 rounded-md bg-red-600 text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save Project"}
+          </button>
+        </div>
       </form>
     </div>
   );
 }
-
-function labelFor(key: ElementKey) {
-  switch (key) {
-    case "project_title": return "Project Title";
-    case "client_name": return "Client Name";
-    case "deliverables": return "Deliverables";
-    case "project_dates_locations": return "Project Date & Location";
-    case "project_status": return "Project Status";
-    case "headline_description": return "Headline Description";
-    case "client_budget": return "Client Budget";
-    case "project_cost": return "Project Cost";
-    case "style_direction": return "Style Direction";
-    case "shotlist": return "Shotlist";
-    case "delivery_links": return "Delivery Links";
-    case "expenses": return "Expenses";
-    case "terms_and_conditions": return "Terms & Conditions";
-    case "rams": return "RAMS";
-    case "insurance": return "Insurance";
-    case "additional_requests": return "Additional Requests";
-    case "notes": return "Notes";
-  }
-}
-
-function cryptoRandom(len: number) {
-  const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const arr = new Uint32Array(len);
-  // @ts-ignore
-  (globalThis.crypto || (window as any).crypto).getRandomValues(arr);
-  let out = "";
-  for (let i = 0; i < len; i++) out += alphabet[arr[i] % alphabet.length];
-  return out;
-}
-
-
-
 
