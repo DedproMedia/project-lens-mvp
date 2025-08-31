@@ -17,7 +17,7 @@ export default function StatusSelect({
   useEffect(() => {
     const load = async () => {
       const supabase = supabaseBrowser();
-      const { data } = await supabase.from("status_types").select("id, name, color");
+      const { data } = await supabase.from("project_status_types").select("id, name, color");
       if (data) setStatuses(data);
     };
     load();

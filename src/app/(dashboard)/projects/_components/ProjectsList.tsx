@@ -25,7 +25,7 @@ export default function ProjectsList() {
         .select(
           `id, title, headline_description, created_at, 
            client:clients(name), 
-           status:status_types(name, color)`
+           status:project_status_types(name, color)`
         )
         .order("created_at", { ascending: false });
 
