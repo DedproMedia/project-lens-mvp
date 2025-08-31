@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 type Client = { id: string; name: string };
@@ -15,8 +15,6 @@ export default function NewProjectPage() {
   const [err, setErr] = useState<string | null>(null);
 
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const preselectedClient = searchParams.get("client_id");
 
   useEffect(() => {
     let mounted = true;
@@ -27,14 +25,13 @@ export default function NewProjectPage() {
       if (!mounted) return;
       if (!error && data) {
         setClients(data.map((c) => ({ id: String(c.id), name: c.name })));
-        if (preselectedClient) setClientId(preselectedClient);
       }
     };
     load();
     return () => {
       mounted = false;
     };
-  }, [preselectedClient]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,4 +130,5 @@ export default function NewProjectPage() {
     </div>
   );
 }
+
 
