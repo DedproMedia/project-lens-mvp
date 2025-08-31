@@ -1,18 +1,38 @@
-// ...existing imports
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const links = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/projects", label: "Projects" },
+  { href: "/clients", label: "Clients" },
+  { href: "/settings/status-types", label: "Status Types" },
+];
 
 export default function Sidebar() {
-  return (
-    <aside className="bg-white/5 border-r border-white/10 p-4">
-      <div className="text-xl font-semibold mb-4">Project Lens</div>
+  const pathname = usePathname();
 
-      <nav className="grid gap-2 text-sm">
-        <Link href="/projects">Projects</Link>
-        <Link href="/projects/new">+ New Project</Link>
-        <Link href="/clients">Clients</Link>
-        <Link href="/clients/new">+ New Client</Link>
-      </nav>
-    </aside>
+  return (
+    <nav className="flex flex-col gap-3">
+      {links.map((link) => {
+        const active = pathname.startsWith(link.href);
+        return (
+          <Link
+            key={link.href}
+            href={link.href}
+            className={`px-3 py-2 rounded-md ${
+              active
+                ? "bg-white text-black font-bold"
+                : "text-white hover:bg-gray-800 hover:text-gray-200"
+            }`}
+          >
+            {link.label}
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
+
 
