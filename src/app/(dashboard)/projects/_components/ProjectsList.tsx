@@ -49,11 +49,13 @@ export default function ProjectsList() {
       }
 
       if (!s.error && s.data) {
-        setStatusTypes((s.data as any[]).map((x) => ({
-          id: Number(x.id),
-          name: String(x.name),
-          color: x.color ?? null,
-        })));
+        setStatusTypes(
+          (s.data as any[]).map((x) => ({
+            id: Number(x.id),
+            name: String(x.name),
+            color: x.color ?? null,
+          }))
+        );
       }
 
       setLoading(false);
@@ -122,6 +124,38 @@ export default function ProjectsList() {
 
 function StatusBadge({ label, color }: { label: string; color: string | null }) {
   return (
-    <span
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium bg-white shadow-sm">
+      <span className="w-2.5 h-2.5 rounded-full" style={{ background: color || "#9ca3af" }} />
+      <span>{label || "—"}</span>
+    </span>
+  );
+}
 
+function fmtDate(iso?: string | null) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return "—";
+  }
+}
+
+function hexToRgba(hex: string, alpha = 0.1): string | undefined {
+  if (!hex) return undefined;
+  let h = hex.trim();
+  if (h.startsWith("#")) h = h.slice(1);
+  if (h.length === 3) {
+    const r = h[0] + h[0];
+    const g = h[1] + h[1];
+    const b = h[2] + h[2];
+    return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
+  }
+  if (h.length === 6) {
+    const r = h.slice(0, 2);
+    const g = h.slice(2, 4);
+    const b = h.slice(4, 6);
+    return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
+  }
+  return undefined;
+}
 
