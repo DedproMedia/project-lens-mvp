@@ -4,290 +4,218 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-type Client = { id: string; name: string };
-type Status = { id: number; name: string; color: string | null };
-
+type ClientRef = { name: string | null };
 type ProjectRow = {
   id: string;
-  display_name: string;
-  headline_description: string | null;
-  created_at: string;
-  client_id?: string | null;
-  status_type_id?: number | null;
-  client?: { name: string | null } | null;
-  status?: { name: string; color?: string | null } | null;
+  title: string;
+  created_at?: string | null;
+  client?: ClientRef | null;
+  config?: any | null;
 };
+type StatusType = { id: number; name: string; color: string | null };
 
 export default function ProjectsList() {
   const [rows, setRows] = useState<ProjectRow[]>([]);
+  const [statusTypes, setStatusTypes] = useState<StatusType[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const [clients, setClients] = useState<Record<string, Client>>({});
-  const [statuses, setStatuses] = useState<Record<number, Status>>({});
-
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("");
-
   useEffect(() => {
     let mounted = true;
-
     const load = async () => {
       setLoading(true);
       setErr(null);
-
       const supabase = supabaseBrowser();
 
-      // Flexible select to tolerate schema diffs; embeds if available
-      const projectsSel = "*, clients(name), project_status_types(name,color)";
-
-      const [p, c, s] = await Promise.all([
-        supabase.from("projects").select(projectsSel).order("created_at", { ascending: false }),
-        supabase.from("clients").select("id,name"),
-        supabase.from("project_status_types").select("id,name,color"),
+      const [p, s] = await Promise.all([
+        // Pull config so we can read status from config.data
+        supabase
+          .from("projects")
+          .select("id,name,title,created_at,client:clients(name),config")
+          .order("created_at", { ascending: false })
+          .limit(200),
+        supabase
+          .from("project_status_types")
+          .select("id,name,color")
+          .order("name"),
       ]);
 
       if (!mounted) return;
 
-      // Lookup maps
-      if (!c.error && c.data) {
-        const cmap: Record<string, Client> = {};
-        (c.data as any[]).forEach((x) => (cmap[x.id] = { id: String(x.id), name: String(x.name) }));
-        setClients(cmap);
+      if (p.error) {
+        setErr(p.error.message);
+        setRows([]);
+      } else {
+        const mapped = (p.data || []).map((r: any) => ({
+          id: String(r.id),
+          title: String(r.name ?? r.title ?? "Untitled"),
+          created_at: r.created_at ?? null,
+          client: r.client ?? null,
+          config: r.config ?? null,
+        }));
+        setRows(mapped);
       }
 
       if (!s.error && s.data) {
-        const smap: Record<number, Status> = {};
-        (s.data as any[]).forEach((x) => (smap[x.id] = { id: Number(x.id), name: String(x.name), color: x.color ?? null }));
-        setStatuses(smap);
+        setStatusTypes(
+          (s.data as any[]).map((x) => ({
+            id: Number(x.id),
+            name: String(x.name),
+            color: x.color ?? null,
+          }))
+        );
       }
 
-      if (p.error) {
-        // Show a stable error message and stop loading
-        setErr(p.error.message);
-        setLoading(false);
-        return;
-      }
-
-      const normalized: ProjectRow[] = (p.data as any[] | null | undefined)?.map((r: any) => {
-        // Derive display name from likely columns
-        const display = r.name ?? r.project_name ?? r.title ?? "(untitled)";
-        const headline = r.headline_description ?? r.description ?? r.summary ?? null;
-
-        // Normalize possible array/object joins
-        const clientJoinRaw = r.client ?? r.clients ?? null;
-        const clientJoin = Array.isArray(clientJoinRaw) ? clientJoinRaw[0] ?? null : clientJoinRaw ?? null;
-
-        const statusJoinRaw = r.status ?? r.project_status_types ?? null;
-        const statusJoin = Array.isArray(statusJoinRaw) ? statusJoinRaw[0] ?? null : statusJoinRaw ?? null;
-
-        const statusId =
-          typeof r.status_type_id === "number" ? r.status_type_id
-          : typeof r.status_id === "number" ? r.status_id
-          : null;
-
-        return {
-          id: String(r.id),
-          display_name: String(display),
-          headline_description: headline ? String(headline) : null,
-          created_at: r.created_at ?? new Date().toISOString(),
-          client_id: r.client_id ?? r.clientid ?? null,
-          status_type_id: statusId,
-          client: clientJoin ? { name: clientJoin.name ?? null } : null,
-          status: statusJoin ? { name: statusJoin.name, color: statusJoin.color ?? null } : null,
-        };
-      }) ?? [];
-
-      setRows(normalized);
       setLoading(false);
     };
-
-    // fire once
     load();
-
     return () => {
       mounted = false;
     };
-  }, []); // IMPORTANT: empty deps so it doesn't loop
+  }, []);
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return rows.filter((r) => {
-      const nameHit = r.display_name.toLowerCase().includes(term);
-      const clientName =
-        r.client?.name ??
-        (r.client_id && clients[r.client_id] ? clients[r.client_id].name : "");
-      const clientHit = clientName?.toLowerCase().includes(term);
-      const statusName =
-        r.status?.name ??
-        (r.status_type_id && statuses[r.status_type_id] ? statuses[r.status_type_id].name : "");
-      const statusHit = statusName?.toLowerCase().includes(term);
+  const statusIndex = useMemo(() => {
+    const idx = new Map<string, string | null>();
+    statusTypes.forEach((st) => idx.set(st.name.toLowerCase(), st.color));
+    return idx;
+  }, [statusTypes]);
 
-      const termOk = !term || nameHit || clientHit || statusHit;
-      const statusOk = !statusFilter || statusName === statusFilter;
-      return termOk && statusOk;
-    });
-  }, [rows, clients, statuses, search, statusFilter]);
-
-  const uniqueStatuses = useMemo(() => {
-    const set = new Set<string>();
-    rows.forEach((r) => {
-      const n =
-        r.status?.name ??
-        (r.status_type_id && statuses[r.status_type_id] ? statuses[r.status_type_id].name : "");
-      if (n) set.add(n);
-    });
-    return Array.from(set.values()).sort();
-  }, [rows, statuses]);
-
-  const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-
-  const getClientName = (r: ProjectRow) =>
-    r.client?.name ??
-    (r.client_id && clients[r.client_id] ? clients[r.client_id].name : "—");
-
-  const getStatus = (r: ProjectRow) => {
-    const name =
-      r.status?.name ??
-      (r.status_type_id && statuses[r.status_type_id] ? statuses[r.status_type_id].name : undefined);
+  const derived = rows.map((r) => {
+    const data = (r.config?.data ?? {}) as Record<string, any>;
+    const label: string =
+      (data["project_status.custom"] as string) ||
+      (data["project_status.name"] as string) ||
+      "";
     const color =
-      r.status?.color ??
-      (r.status_type_id && statuses[r.status_type_id] ? statuses[r.status_type_id].color : undefined);
-    return { name: name || "—", color: color || "#9ca3af" };
-  };
+      (label &&
+        statusIndex.get(label.trim().toLowerCase()) &&
+        (statusIndex.get(label.trim().toLowerCase()) as string)) ||
+      null;
 
-  if (loading) {
-    return <div style={{ padding: 12 }}>Loading projects…</div>;
-  }
+    return {
+      ...r,
+      statusLabel: label || "—",
+      statusColor: color, // hex like #2563eb or null
+    };
+  });
 
-  if (err) {
-    const isAuthish = /permission|rls|auth|401|403|JWT/i.test(err);
-    return (
-      <div style={{ padding: 12, color: "crimson" }}>
-        Failed to load projects: {err}
-        <div style={{ color: "#666", marginTop: 6, fontSize: 12 }}>
-          {isAuthish
-            ? "Tip: You may not be signed in or RLS is blocking reads."
-            : "Tip: Check your projects table columns match (e.g., name/title) or adjust the selector."}
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <div style={{ padding: 16 }}>Loading projects…</div>;
+  if (err) return <div style={{ padding: 16, color: "crimson" }}>Error: {err}</div>;
+  if (derived.length === 0) return <div style={{ padding: 16 }}>No projects yet.</div>;
 
   return (
-    <div>
-      {/* Controls */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
-        <input
-          placeholder="Search by project, client, or status…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: 8, border: "1px solid #e5e7eb", borderRadius: 6, flex: 1 }}
-        />
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={{ padding: 8, border: "1px solid #e5e7eb", borderRadius: 6 }}
-        >
-          <option value="">All statuses</option>
-          {uniqueStatuses.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </div>
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>
+            <th style={{ padding: 10 }}>Project</th>
+            <th style={{ padding: 10 }}>Client</th>
+            <th style={{ padding: 10 }}>Status</th>
+            <th style={{ padding: 10 }}>Created</th>
+            <th style={{ padding: 10 }} />
+          </tr>
+        </thead>
+        <tbody>
+          {derived.map((r) => {
+            const tint = r.statusColor
+              ? hexToRgba(r.statusColor, 0.2) // ~20% saturation tint
+              : undefined;
 
-      {/* Table */}
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>
-              <th style={{ padding: "10px 8px" }}>Project</th>
-              <th style={{ padding: "10px 8px" }}>Client</th>
-              <th style={{ padding: "10px 8px" }}>Status</th>
-              <th style={{ padding: "10px 8px" }}>Created</th>
-              <th style={{ padding: "10px 8px", textAlign: "right" }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={5} style={{ padding: 12, color: "#6b7280" }}>
-                  No projects found.
+            return (
+              <tr
+                key={r.id}
+                style={{
+                  borderBottom: "1px solid #f3f4f6",
+                  background: tint,
+                  transition: "background 120ms ease",
+                }}
+              >
+                <td style={{ padding: 10, fontWeight: 500 }}>
+                  <Link href={`/projects/${r.id}`}>{r.title}</Link>
+                </td>
+                <td style={{ padding: 10 }}>{r.client?.name || "—"}</td>
+                <td style={{ padding: 10 }}>
+                  <StatusBadge label={r.statusLabel} color={r.statusColor} />
+                </td>
+                <td style={{ padding: 10 }}>{fmtDate(r.created_at)}</td>
+                <td style={{ padding: 10, textAlign: "right" }}>
+                  <Link href={`/projects/${r.id}`}>Open</Link>
                 </td>
               </tr>
-            ) : (
-              filtered.map((r) => {
-                const { name: statusName, color } = getStatus(r);
-                return (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "10px 8px" }}>
-                      <div style={{ fontWeight: 600 }}>
-                        <Link href={`/projects/${r.id}`} style={{ textDecoration: "underline" }}>
-                          {r.display_name}
-                        </Link>
-                      </div>
-                      {r.headline_description && (
-                        <div
-                          style={{
-                            color: "#6b7280",
-                            fontSize: 12,
-                            marginTop: 2,
-                            maxWidth: 560,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {r.headline_description}
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: "10px 8px" }}>{getClientName(r)}</td>
-                    <td style={{ padding: "10px 8px" }}>
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                          padding: "2px 8px",
-                          borderRadius: 999,
-                          border: "1px solid #e5e7eb",
-                          background: "#fff",
-                        }}
-                      >
-                        <span
-                          aria-hidden
-                          style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: 999,
-                            background: color || "#9ca3af",
-                            display: "inline-block",
-                          }}
-                        />
-                        <span>{statusName}</span>
-                      </span>
-                    </td>
-                    <td style={{ padding: "10px 8px" }}>{fmtDate(r.created_at)}</td>
-                    <td style={{ padding: "10px 8px", textAlign: "right" }}>
-                      <div style={{ display: "inline-flex", gap: 8 }}>
-                        <Link href={`/projects/${r.id}`} title="View">View</Link>
-                        <span aria-hidden style={{ color: "#e5e7eb" }}>|</span>
-                        <Link href={`/projects/${r.id}?mode=edit`} title="Edit">Edit</Link>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+            );
+          })}
+        </tbody>
+      </table>
+      <p style={{ color: "#666", fontSize: 12, marginTop: 8 }}>
+        Status colors come from <code>Settings → Status Types</code>. Custom statuses use no color unless the custom
+        text equals a named status (case-insensitive).
+      </p>
     </div>
   );
 }
 
+/** Tiny pill showing status + color */
+function StatusBadge({ label, color }: { label: string; color: string | null }) {
+  const pillStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "4px 10px",
+    borderRadius: 999,
+    border: "1px solid #e5e7eb",
+    background: "#fff",
+    color: "#111",
+    fontSize: 13,
+    lineHeight: 1,
+  };
+
+  const dotStyle: React.CSSProperties = {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    background: color || "#9ca3af", // gray if none
+    boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)",
+  };
+
+  return (
+    <span style={pillStyle}>
+      <span style={dotStyle} />
+      <span>{label || "—"}</span>
+    </span>
+  );
+}
+
+function fmtDate(iso?: string | null) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return "—";
+  }
+}
+
+/** Convert #RRGGBB (or #RGB) to rgba(r,g,b,alpha). Falls back to undefined on bad input. */
+function hexToRgba(hex: string, alpha = 0.2): string | undefined {
+  if (!hex) return undefined;
+  let h = hex.trim();
+  if (h.startsWith("#")) h = h.slice(1);
+  if (h.length === 3) {
+    const r = h[0] + h[0];
+    const g = h[1] + h[1];
+    const b = h[2] + h[2];
+    return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
+  }
+  if (h.length === 6) {
+    const r = h.slice(0, 2);
+    const g = h.slice(2, 4);
+    const b = h.slice(4, 6);
+    return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
+  }
+  // unsupported (e.g. 8-digit w/ alpha) — return undefined to avoid breaking the UI
+  return undefined;
+}
 
