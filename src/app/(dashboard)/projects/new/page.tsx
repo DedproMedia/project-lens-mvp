@@ -71,15 +71,14 @@ export default function NewProjectPage() {
     const supabase = supabaseBrowser();
     const { error } = await supabase.from("projects").insert([
       {
-        name: title,
-        title,
+        title, // ✅ only use `title`, not `name`
         headline_description: headline,
         client_id: clientId,
         config: {
           elements: activeElements,
-          visibility: visible,   // ✅ fixed
-          editability: editable, // ✅ fixed
-          data: {},              // later: element-specific inputs
+          visibility: visible,
+          editability: editable,
+          data: {}, // later: element-specific inputs
         },
       },
     ]);
