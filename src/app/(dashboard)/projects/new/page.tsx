@@ -77,9 +77,9 @@ export default function NewProjectPage() {
         client_id: clientId,
         config: {
           elements: activeElements,
-          visibility,
-          editability,
-          data: {}, // later: store element-specific input data
+          visibility: visible,   // ✅ fixed
+          editability: editable, // ✅ fixed
+          data: {},              // later: element-specific inputs
         },
       },
     ]);
@@ -193,7 +193,9 @@ export default function NewProjectPage() {
               </div>
               <h3 className="text-sm font-semibold mb-2">{el}</h3>
               {/* TODO: element-specific inputs go here */}
-              <p className="text-xs text-gray-500 italic">[Input fields for {el} will go here]</p>
+              <p className="text-xs text-gray-500 italic">
+                [Input fields for {el} will go here]
+              </p>
             </div>
           ))}
 
@@ -219,3 +221,4 @@ export default function NewProjectPage() {
     </div>
   );
 }
+
