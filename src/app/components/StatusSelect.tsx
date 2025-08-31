@@ -13,6 +13,7 @@ export default function StatusSelect({
   onChange: (id: string | null) => void;
 }) {
   const [statuses, setStatuses] = useState<Status[]>([]);
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -29,30 +30,46 @@ export default function StatusSelect({
   const current = statuses.find((s) => s.id === value);
 
   return (
-    <div className="flex items-center gap-2">
-      {current && (
-        <>
-          <span
-            className="inline-block w-3 h-3 rounded-full"
-            style={{ backgroundColor: current.color || "#999" }}
-          />
-          <span className="text-sm font-medium">{current.name}</span>
-        </>
-      )}
-      <select
-        className="text-xs border rounded px-1 py-0.5 bg-white"
-        value={value || ""}
-        onChange={(e) => onChange(e.target.value || null)}
+    <div className="relative inline-block">
+      {/* Pill Display */}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="px-3 py-1 text-xs font-medium rounded-full"
+        style={{
+          backgroundColor: current?.color || "#9CA3AF",
+          color: "#fff",
+        }}
       >
-        <option value="">—</option>
-        {statuses.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.name}
-          </option>
-        ))}
-      </select>
+        {current?.name || "—"}
+      </button>
+
+      {/* Dropdown Menu */}
+      {open && (
+        <div className="absolute z-10 mt-1 w-40 bg-white border border-gray-200 rounded shadow-lg">
+          <ul className="max-h-48 overflow-y-auto text-sm">
+            {statuses.map((s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(s.id);
+                    setOpen(false);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-100"
+                >
+                  <span
+                    className="inline-block w-3 h-3 rounded-full mr-2"
+                    style={{ backgroundColor: s.color || "#999" }}
+                  />
+                  {s.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
-
 
