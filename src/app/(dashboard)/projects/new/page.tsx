@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import StatusSelect from "@/app/components/StatusSelect";
 
 type Client = { id: string; name: string };
 
@@ -30,6 +31,7 @@ export default function NewProjectPage() {
   const [headline, setHeadline] = useState("");
   const [clientId, setClientId] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
+  const [statusId, setStatusId] = useState<string | null>(null);
 
   const [activeElements, setActiveElements] = useState<string[]>([]);
   const [visible, setVisible] = useState<Record<string, boolean>>({});
@@ -71,14 +73,15 @@ export default function NewProjectPage() {
     const supabase = supabaseBrowser();
     const { error } = await supabase.from("projects").insert([
       {
-        title, // ✅ only use `title`, not `name`
+        title,
         headline_description: headline,
         client_id: clientId,
+        status_type_id: statusId,
         config: {
           elements: activeElements,
           visibility: visible,
           editability: editable,
-          data: {}, // later: element-specific inputs
+          data: {},
         },
       },
     ]);
@@ -158,6 +161,12 @@ export default function NewProjectPage() {
             </select>
           </div>
 
+          {/* Status */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Project Status</label>
+            <StatusSelect value={statusId} onChange={setStatusId} />
+          </div>
+
           {/* Dynamic Element Sections */}
           {activeElements.map((el) => (
             <div key={el} className="border rounded-md p-4 relative bg-gray-50">
@@ -191,10 +200,7 @@ export default function NewProjectPage() {
                 </button>
               </div>
               <h3 className="text-sm font-semibold mb-2">{el}</h3>
-              {/* TODO: element-specific inputs go here */}
-              <p className="text-xs text-gray-500 italic">
-                [Input fields for {el} will go here]
-              </p>
+              <p className="text-xs text-gray-500 italic">[Input fields for {el} will go here]</p>
             </div>
           ))}
 

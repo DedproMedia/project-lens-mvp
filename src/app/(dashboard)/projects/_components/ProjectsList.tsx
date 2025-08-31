@@ -1,161 +1,99 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-type ClientRef = { name: string | null };
 type ProjectRow = {
   id: string;
-  title: string;
-  created_at?: string | null;
-  client?: ClientRef | null;
-  config?: any | null;
+  title: string | null;
+  headline_description: string | null;
+  created_at: string | null;
+  client: { name: string | null } | null;
+  status: { name: string | null; color: string | null } | null;
 };
-type StatusType = { id: number; name: string; color: string | null };
 
 export default function ProjectsList() {
   const [rows, setRows] = useState<ProjectRow[]>([]);
-  const [statusTypes, setStatusTypes] = useState<StatusType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    let mounted = true;
     const load = async () => {
-      setLoading(true);
-      setErr(null);
       const supabase = supabaseBrowser();
+      const { data, error } = await supabase
+        .from("projects")
+        .select(
+          `id, title, headline_description, created_at, 
+           client:clients(name), 
+           status:status_types(name, color)`
+        )
+        .order("created_at", { ascending: false });
 
-      const [p, s] = await Promise.all([
-        supabase.from("projects").select("*, client:clients(name)").order("created_at", { ascending: false }).limit(200),
-        supabase.from("project_status_types").select("id,name,color").order("name"),
-      ]);
-
-      if (!mounted) return;
-
-      if (p.error) {
-        setErr(p.error.message);
-        setRows([]);
-      } else {
-        const mapped = (p.data || []).map((r: any) => ({
-          id: String(r.id),
-          title: String(r.name ?? r.title ?? "Untitled"),
-          created_at: r.created_at ?? null,
-          client: r.client ?? null,
-          config: r.config ?? null,
-        }));
-        setRows(mapped);
-      }
-
-      if (!s.error && s.data) {
-        setStatusTypes(
-          (s.data as any[]).map((x) => ({
-            id: Number(x.id),
-            name: String(x.name),
-            color: x.color ?? null,
-          }))
-        );
-      }
-
+      if (!error && data) setRows(data as any);
       setLoading(false);
     };
     load();
-    return () => {
-      mounted = false;
-    };
   }, []);
 
-  const statusIndex = useMemo(() => {
-    const idx = new Map<string, string | null>();
-    statusTypes.forEach((st) => idx.set(st.name.toLowerCase(), st.color));
-    return idx;
-  }, [statusTypes]);
-
-  const derived = rows.map((r) => {
-    const data = (r.config?.data ?? {}) as Record<string, any>;
-    const label: string = (data["project_status.custom"] as string) || (data["project_status.name"] as string) || "";
-    const color = (label && statusIndex.get(label.trim().toLowerCase())) || null;
-    return { ...r, statusLabel: label || "—", statusColor: color };
-  });
-
-  if (loading) return <div className="p-4 text-gray-600">Loading projects…</div>;
-  if (err) return <div className="p-4 text-red-600">Error: {err}</div>;
-  if (derived.length === 0) return <div className="p-4 text-gray-600">No projects yet.</div>;
+  if (loading) return <p>Loading projects…</p>;
+  if (rows.length === 0) return <p>No projects yet.</p>;
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse rounded-lg shadow-sm text-sm">
-        <thead>
-          <tr className="bg-gray-100 text-left text-xs uppercase tracking-wide">
-            <th className="px-4 py-2 font-semibold">Project</th>
-            <th className="px-4 py-2 font-semibold">Client</th>
-            <th className="px-4 py-2 font-semibold">Status</th>
-            <th className="px-4 py-2 font-semibold">Created</th>
-            <th className="px-4 py-2" />
-          </tr>
-        </thead>
-        <tbody>
-          {derived.map((r, i) => {
-            const tint = r.statusColor ? hexToRgba(r.statusColor, 0.1) : i % 2 === 0 ? "#fafafa" : "#ffffff";
-            return (
-              <tr key={r.id} style={{ background: tint }}>
-                <td className="px-4 py-2 font-medium text-black">
-                  <Link href={`/projects/${r.id}`}>{r.title}</Link>
-                </td>
-                <td className="px-4 py-2 text-gray-700">{r.client?.name || "—"}</td>
-                <td className="px-4 py-2">
-                  <StatusBadge label={r.statusLabel} color={r.statusColor} />
-                </td>
-                <td className="px-4 py-2 text-gray-500 text-xs">{fmtDate(r.created_at)}</td>
-                <td className="px-4 py-2 text-right">
-                  <Link href={`/projects/${r.id}`} className="text-red-600 hover:text-red-800 font-medium text-xs">
-                    Open →
-                  </Link>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <table className="min-w-full text-sm border-collapse border border-gray-200">
+      <thead className="bg-gray-100 text-gray-700">
+        <tr>
+          <th className="px-3 py-2 border border-gray-200 text-left">Title</th>
+          <th className="px-3 py-2 border border-gray-200 text-left">Client</th>
+          <th className="px-3 py-2 border border-gray-200 text-left">Status</th>
+          <th className="px-3 py-2 border border-gray-200 text-left">Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((p) => {
+          const bgColor = p.status?.color
+            ? `${p.status.color}33` // 20% opacity in hex
+            : "transparent";
+
+          return (
+            <tr
+              key={p.id}
+              style={{ backgroundColor: bgColor }}
+              className="hover:bg-gray-50"
+            >
+              <td className="px-3 py-2 border border-gray-200">
+                <Link
+                  href={`/projects/${p.id}`}
+                  className="text-blue-600 hover:underline"
+                >
+                  {p.title || "(untitled)"}
+                </Link>
+              </td>
+              <td className="px-3 py-2 border border-gray-200">
+                {p.client?.name || "—"}
+              </td>
+              <td className="px-3 py-2 border border-gray-200">
+                {p.status ? (
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="inline-block w-3 h-3 rounded-full"
+                      style={{ backgroundColor: p.status.color || "#999" }}
+                    />
+                    {p.status.name}
+                  </span>
+                ) : (
+                  "—"
+                )}
+              </td>
+              <td className="px-3 py-2 border border-gray-200">
+                {p.created_at
+                  ? new Date(p.created_at).toLocaleDateString()
+                  : "—"}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
-}
-
-function StatusBadge({ label, color }: { label: string; color: string | null }) {
-  return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium bg-white shadow-sm">
-      <span className="w-2.5 h-2.5 rounded-full" style={{ background: color || "#9ca3af" }} />
-      <span>{label || "—"}</span>
-    </span>
-  );
-}
-
-function fmtDate(iso?: string | null) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-  } catch {
-    return "—";
-  }
-}
-
-function hexToRgba(hex: string, alpha = 0.1): string | undefined {
-  if (!hex) return undefined;
-  let h = hex.trim();
-  if (h.startsWith("#")) h = h.slice(1);
-  if (h.length === 3) {
-    const r = h[0] + h[0];
-    const g = h[1] + h[1];
-    const b = h[2] + h[2];
-    return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
-  }
-  if (h.length === 6) {
-    const r = h.slice(0, 2);
-    const g = h.slice(2, 4);
-    const b = h.slice(4, 6);
-    return `rgba(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)}, ${alpha})`;
-  }
-  return undefined;
 }
 
