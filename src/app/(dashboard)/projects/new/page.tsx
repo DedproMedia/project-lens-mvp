@@ -6,11 +6,31 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 
 type Client = { id: string; name: string };
 
+const AVAILABLE_ELEMENTS = [
+  "Deliverables",
+  "Dates",
+  "Location",
+  "Budget",
+  "Cost",
+  "Style Direction",
+  "Shotlist",
+  "Delivery Links",
+  "Expenses",
+  "Terms & Conditions",
+  "RAMS",
+  "Insurance",
+  "Additional Requests",
+  "Notes",
+];
+
 export default function NewProjectPage() {
   const [title, setTitle] = useState("");
   const [headline, setHeadline] = useState("");
   const [clientId, setClientId] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
+  const [selectedElements, setSelectedElements] = useState<string[]>([]);
+  const [visible, setVisible] = useState<Record<string, boolean>>({});
+  const [editable, setEditable] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -33,6 +53,12 @@ export default function NewProjectPage() {
     };
   }, []);
 
+  const toggleElement = (el: string) => {
+    setSelectedElements((prev) =>
+      prev.includes(el) ? prev.filter((e) => e !== el) : [...prev, el]
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -45,7 +71,12 @@ export default function NewProjectPage() {
         title,
         headline_description: headline,
         client_id: clientId,
-        config: { elements: {}, visibility: {}, editability: {}, data: {} },
+        config: {
+          elements: selectedElements,
+          visibility: visible,
+          editability: editable,
+          data: {},
+        },
       },
     ]);
 
@@ -59,10 +90,10 @@ export default function NewProjectPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
+    <div className="max-w-3xl mx-auto p-6">
       <h1 className="text-xl font-semibold mb-4">New Project</h1>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {err && <p className="text-sm text-red-600">{err}</p>}
 
         {/* Project Title */}
@@ -70,7 +101,7 @@ export default function NewProjectPage() {
           <label className="block text-sm font-medium mb-1 text-gray-800">Project Title</label>
           <input
             type="text"
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-red-500"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
@@ -81,7 +112,7 @@ export default function NewProjectPage() {
         <div>
           <label className="block text-sm font-medium mb-1 text-gray-800">Headline Description</label>
           <textarea
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-red-500"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
             rows={3}
             value={headline}
             onChange={(e) => setHeadline(e.target.value)}
@@ -92,7 +123,7 @@ export default function NewProjectPage() {
         <div>
           <label className="block text-sm font-medium mb-1 text-gray-800">Client</label>
           <select
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-red-500"
+            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-red-500"
             value={clientId || ""}
             onChange={(e) => setClientId(e.target.value || null)}
             required
@@ -104,9 +135,49 @@ export default function NewProjectPage() {
               </option>
             ))}
           </select>
-          <p className="mt-1 text-xs text-gray-500">
-            Need a new client? <a href="/clients/new" className="text-red-600 hover:underline">+ Add one</a>
-          </p>
+        </div>
+
+        {/* Elements */}
+        <div>
+          <h2 className="text-sm font-semibold text-gray-800 mb-2">Project Elements</h2>
+          <div className="space-y-2">
+            {AVAILABLE_ELEMENTS.map((el) => (
+              <div key={el} className="flex items-center justify-between border rounded-md px-3 py-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedElements.includes(el)}
+                    onChange={() => toggleElement(el)}
+                  />
+                  {el}
+                </label>
+                {selectedElements.includes(el) && (
+                  <div className="flex gap-4 text-xs text-gray-600">
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={visible[el] || false}
+                        onChange={(e) =>
+                          setVisible({ ...visible, [el]: e.target.checked })
+                        }
+                      />
+                      Visible
+                    </label>
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={editable[el] || false}
+                        onChange={(e) =>
+                          setEditable({ ...editable, [el]: e.target.checked })
+                        }
+                      />
+                      Editable
+                    </label>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Actions */}
@@ -130,5 +201,4 @@ export default function NewProjectPage() {
     </div>
   );
 }
-
 
