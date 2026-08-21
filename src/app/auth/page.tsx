@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-export default function AuthPage() {
+function AuthPageInner() {
+  const searchParams = useSearchParams();
+  const next = searchParams.get("next") || "/projects";
+
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -14,11 +18,11 @@ export default function AuthPage() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
-  // Build redirect once on the client
+  // Build redirect once on the client, carrying the page to return to after sign-in.
   const redirectTo = useMemo(() => {
     if (typeof window === "undefined") return "/auth/callback";
-    return window.location.origin + "/auth/callback";
-  }, []);
+    return `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+  }, [next]);
 
   // Direct (SDK-free) OAuth URL as a last-resort fallback
   const directOAuthUrl = useMemo(() => {
@@ -168,5 +172,13 @@ export default function AuthPage() {
         Redirect target: <code>{redirectTo}</code>
       </p>
     </div>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
+      <AuthPageInner />
+    </Suspense>
   );
 }
