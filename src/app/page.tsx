@@ -45,9 +45,8 @@ export default function Page() {
         </form>
         {msg && <p className="mt-4 text-sm text-accent">{msg}</p>}
 
-        <div className="mt-6 flex flex-col gap-2">
+        <div className="mt-6">
           <Link href="/dashboard" className="underline text-white/70 text-sm">Skip to Dashboard (demo)</Link>
-          <Link href="/flashcards" className="underline text-white/70 text-sm">🌍 Try the Capital Cities Flashcards</Link>
         </div>
       </div>
     </main>
